@@ -57,7 +57,7 @@ Or serve it locally: `npm start`, then visit http://localhost:8080.
 | Rent tax credit | 20% of rent, capped per year (€1,000 single / €2,000 couple for 2024–26) |
 | Tuition fees | 20% of fees (max €7,000 per course) less €3,000 / €1,500 disregard |
 | Mortgage interest | 20% of the increase over 2022 interest, capped per year |
-| Home carer | Fixed credit, reduced by half the carer's income over €7,200 |
+| Home carer | Fixed credit, reduced by half the carer's income over €7,200. Given instead of the married couple's increased rate band when that saves more, never both |
 | Pension AVC / PRSA (paid outside payroll) | Deduction within 15%–40% age limit of earnings up to €115,000 |
 | Remote working | Deduction of 30% × bills × days WFH / days in year |
 | Nursing home, flat rate expenses | Deduction |
@@ -85,5 +85,11 @@ for the hosted link.
 ## Tests
 
 ```
-npm test
+npm test          # calculator and payslip parser (41 checks, hand-worked figures)
+npm run test:e2e  # whole app in a real browser (needs Playwright + Chromium)
 ```
+
+The browser test serves the bundled page with a strict content policy like the
+hosted viewer's and with browser dialogs disabled. Its payslip tests need
+pdf.js locally (`npm i --no-save pdfjs-dist@3.11.174`) and are skipped
+otherwise.

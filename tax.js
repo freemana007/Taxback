@@ -42,6 +42,7 @@
       bandSingle: 44000, bandMarriedOneEarner: 53000, bandSecondEarnerMax: 35000,
       rentCreditSingle: 1000, rentCreditCouple: 2000,
       homeCarer: 1950, mortgageInterestMax: 625,
+      verifyFields: ['mortgageInterestMax'],
     },
     2026: {
       personalSingle: 2000, personalMarried: 4000, employee: 2000,
@@ -210,17 +211,10 @@
     const taxable = Math.max(0, totalGross - totalDeductions);
 
     // ---- Rate band ----
-    let band;
-    if (!married) {
-      band = r.bandSingle;
-    } else {
-      const lower = Math.min(gross.you, gross.spouse);
-      band = r.bandMarriedOneEarner + Math.min(lower, r.bandSecondEarnerMax);
-    }
-    const atStandard = Math.min(taxable, band);
-    const atHigher = Math.max(0, taxable - band);
-    const grossTax = atStandard * STANDARD_RATE + atHigher * HIGHER_RATE;
-    const marginalRate = taxable > band ? HIGHER_RATE : STANDARD_RATE;
+    // Married: the one-earner band, increased by the lower earner's income up to a maximum.
+    const bandBase = married ? r.bandMarriedOneEarner : r.bandSingle;
+    const bandIncrease = married ? Math.min(Math.min(gross.you, gross.spouse), r.bandSecondEarnerMax) : 0;
+    const taxOn = (b) => Math.min(taxable, b) * STANDARD_RATE + Math.max(0, taxable - b) * HIGHER_RATE;
 
     // ---- Credits ----
     const credits = {};
@@ -267,7 +261,18 @@
       const carerIncome = num(settings.carerIncome);
       homeCarer = Math.max(0, r.homeCarer - Math.max(0, carerIncome - HOME_CARER_INCOME_THRESHOLD) / 2);
     }
-    credits.homeCarer = skip('homeCarer') ? 0 : homeCarer;
+    if (skip('homeCarer')) homeCarer = 0;
+
+    // Revenue gives either the Home Carer Credit or the increased rate band,
+    // whichever is better for the couple, never both.
+    const otherCredits = sum(Object.values(credits));
+    const withBand = Math.max(0, taxOn(bandBase + bandIncrease) - otherCredits);
+    const withCarer = Math.max(0, taxOn(bandBase) - otherCredits - homeCarer);
+    const useCarer = homeCarer > 0 && withCarer < withBand;
+    const band = useCarer ? bandBase : bandBase + bandIncrease;
+    credits.homeCarer = useCarer ? homeCarer : 0;
+    const grossTax = taxOn(band);
+    const marginalRate = taxable > band ? HIGHER_RATE : STANDARD_RATE;
 
     const totalCredits = sum(Object.values(credits));
     const liability = Math.max(0, grossTax - totalCredits);
@@ -288,7 +293,10 @@
       taxPaid: round2(taxPaid),
       hasTaxPaid,
       refund: round2(taxPaid - liability),
-      detail: { pension: pensionDetail, wfhDays, remoteBills, rentPaid, rentCap, interest, increase },
+      detail: {
+        pension: pensionDetail, wfhDays, remoteBills, rentPaid, rentCap, interest, increase,
+        homeCarerAvailable: round2(homeCarer), homeCarerChosen: useCarer, bandIncrease,
+      },
     };
   }
 

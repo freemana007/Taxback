@@ -152,6 +152,10 @@
     const claimRows = Object.entries(values).filter(([, v]) => v > 0)
       .sort((a, b) => b[1] - a[1])
       .map(([k, v]) => ({ cells: [CLAIM_LABELS[k], eur.format(v)] }));
+    if (base.detail.remoteBills > 0 && !base.detail.wfhDays) {
+      const link = el('a', { href: '#', text: 'Add your days worked from home', onclick: (e) => { e.preventDefault(); goTo('profile', '#yearForm [name=wfhDays]'); } });
+      claimRows.unshift({ cells: [el('span', {}, [link, ' to count your remote working bills.']), ''], cls: 'note' });
+    }
     if (!claimRows.length) {
       const msg = count && !base.totalGross
         ? `Add your ${y} gross pay under Income & settings to value these receipts.`
@@ -658,7 +662,8 @@
     const data = [{ head: true, cells: ['', ...years.map((y) => y + (Tax.RATES[y].verify ? ' (check)' : ''))] }];
     fields.forEach(([k, label]) => data.push({ cells: [label, ...years.map((y) => {
       const v = Tax.RATES[y][k];
-      return v ? eur0.format(v) : '—';
+      const check = (Tax.RATES[y].verifyFields || []).includes(k) || (Tax.RATES[y].verify && k === 'mortgageInterestMax');
+      return (v ? eur0.format(v) : '—') + (check && v ? ' (check)' : '');
     })] }));
     rows($('#ratesTable'), data);
   }
@@ -721,16 +726,35 @@
     }
   }
 
-  function downloadBox() {
+  // In the hosted viewer, files are saved through its downloads permission
+  // (the viewer confirms each save). Opened as a local file, a normal
+  // browser download is used.
+  async function downloadBox() {
     const box = $('#dataBox');
     if (!box.value) showBackup();
     const csv = boxKind === 'csv';
-    const name = csv ? 'taxback-receipts.csv' : `taxback-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    const filename = csv ? 'taxback-receipts.csv' : `taxback-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    let downloads = null;
+    if (window.claude && typeof window.claude.use === 'function') {
+      setStatus('Preparing your file…');
+      try { downloads = await window.claude.use('downloads'); } catch (e) { downloads = null; }
+    }
+    if (downloads) {
+      try {
+        await downloads.save({ filename, data: box.value });
+        setStatus(`Saved ${filename}.`);
+      } catch (e) {
+        if (e && e.code === 'declined') setStatus('Download cancelled. Your data is unchanged.');
+        else if (e && e.code === 'rate_limited') setStatus('A save is already waiting for your answer. Finish that one first.', true);
+        else setStatus('This view can’t save files. Use Copy and paste the text somewhere safe instead.', true);
+      }
+      return;
+    }
     const blob = new Blob([box.value], { type: csv ? 'text/csv' : 'application/json' });
-    const a = el('a', { href: URL.createObjectURL(blob), download: name });
+    const a = el('a', { href: URL.createObjectURL(blob), download: filename });
     document.body.append(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-    setStatus('If no file appeared, use Copy instead.');
+    setStatus(`Downloading ${filename}. If no file appears, use Copy instead.`);
   }
 
   function parseBackup(text) {
