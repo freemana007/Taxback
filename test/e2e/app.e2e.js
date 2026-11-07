@@ -91,27 +91,34 @@ function execBuild() {
 }
 
 describe('first visit', () => {
-  it('opens on Start here with step 1 next and no errors', async () => {
+  it('opens on Home with a welcome, the last finished year, and step 1 next', async () => {
     const p = await newPage();
-    assert.equal(await p.isVisible('#tab-guide'), true);
+    assert.equal(await p.isVisible('#tab-dashboard'), true);
+    assert.equal(await p.inputValue('#yearSelect'), String(new Date().getFullYear() - 1));
+    assert.equal(await p.isVisible('#heroEmpty'), true, 'welcome instead of empty numbers');
+    assert.equal(await p.isVisible('#stats'), false);
+    assert.match(await text(p, '#heroNext'), /0 of 6 steps done/);
     const chips = await p.$$eval('.step .chip', (n) => n.map((x) => x.textContent));
     assert.deepEqual(chips, ['Do this next', 'To do', 'To do', 'To do', 'To do', 'To do']);
-    assert.equal(await p.isVisible('#fab'), false, 'add button only on the Overview');
-    await p.click('[data-tab=dashboard]');
-    assert.equal(await p.isVisible('#fab'), true);
-    assert.match(await text(p, '#heroNext'), /0 of 6 steps done/);
-    await p.click('#fab');
-    assert.equal(await p.isVisible('#tab-expenses'), true);
+    assert.equal(await p.isVisible('#fab'), false, 'no add button before anything is entered');
+    // only the next step is open
+    assert.equal(await p.$$eval('.step.todo p', (n) => n.length), 0);
+    // the deadline banner can be dismissed
+    assert.match(await text(p, '#deadlineBanner'), /You may be owed money for 2022 too\. Claims close in \d+ days/);
+    await p.click('#deadlineBanner >> text=Not now');
+    assert.equal(await text(p, '#deadlineBanner'), '');
+    // the hero button starts step 1
+    await p.click('#heroNext >> text=Start');
+    assert.equal(await p.isVisible('#tab-profile'), true);
     await p.click('[data-tab=guide]');
     assert.equal(await p.$$eval('.quiz-item', (n) => n.length), 9);
-    assert.match(await text(p, '#deadlineBanner'), /left to claim for 2022/);
     assert.deepEqual(p.errors, []);
     await p.context().close();
   });
 
   it('every tab opens and every help box has content', async () => {
     const p = await newPage();
-    for (const tab of ['guide', 'dashboard', 'expenses', 'profile', 'review', 'checklist', 'data']) {
+    for (const tab of ['guide', 'dashboard', 'expenses', 'profile', 'review', 'checklist', 'help', 'data']) {
       await p.click(`[data-tab=${tab}]`);
       assert.equal(await p.isVisible(`#tab-${tab}`), true, tab);
     }
@@ -159,6 +166,7 @@ describe('full household walkthrough (married, 2025)', () => {
       await p.press(`#yearForm [name=${k}]`, 'Tab');
     }
     // 50 weeks × 2 days = 100 days
+    await p.click('#optChips [data-opt=wfh]');
     await p.click('[data-help=wfhDays] summary');
     await p.fill('#calcWfhA', '50');
     await p.fill('#calcWfhB', '2');
@@ -270,6 +278,7 @@ describe('full household walkthrough (married, 2025)', () => {
     assert.deepEqual(charges[5].slice(0, 2), ['Take-home pay', euro(88448.39)]);
     // entering USC paid: €300 too much → added to the refund
     await p.click('[data-tab=profile]');
+    await p.click('#optChips [data-opt=uscprsi]');
     await p.fill('#yearForm [name=youUscPaid]', '2343.80');
     await p.fill('#yearForm [name=spouseUscPaid]', '446');
     await p.press('#yearForm [name=spouseUscPaid]', 'Tab');
@@ -290,13 +299,16 @@ describe('full household walkthrough (married, 2025)', () => {
   });
 
   it('guide steps and quiz track progress', async () => {
-    await p.click('[data-tab=guide]');
+    await p.click('[data-tab=dashboard]');
     const chips = await p.$$eval('.step .chip', (n) => n.map((x) => x.textContent));
     assert.deepEqual(chips, ['Done', 'Done', 'Done', 'Done', 'Done', 'Do this next']);
+    await p.click('.step:nth-child(6) >> text=Show me how to claim');
+    assert.equal(await p.isVisible('#tab-guide'), true);
     await p.click('.quiz-item:has-text("college fees") >> text=Yes');
     assert.match(await text(p, '.quiz-item:has-text("college fees")'), /Add another \(1 added\)/);
     await p.click('#routePick >> text=Form 11');
     assert.match(await text(p, '#claimSteps'), /Register for ROS.*Form 11/);
+    await p.click('[data-tab=dashboard]');
     assert.match(await text(p, '.step:nth-child(6)'), /ROS login/);
     await p.check('.step:nth-child(6) input[type=checkbox]');
     assert.equal(await text(p, '.step:nth-child(6) .chip'), 'Done');
@@ -368,6 +380,7 @@ describe('pay and tax for a year that is not over', () => {
     await p.selectOption('#yearSelect', '2025');
     await p.click('[data-tab=profile]');
     await p.fill('#yearForm [name=youGross]', '30000');
+    await p.click('#optChips [data-opt=welfare]');
     await p.fill('#yearForm [name=youWelfare]', '10000');
     await p.fill('#yearForm [name=youTaxPaid]', '4500');
     await p.press('#yearForm [name=youTaxPaid]', 'Tab');
@@ -504,9 +517,12 @@ describe('layout', () => {
     it(`no sideways scrolling at phone width (${scheme})`, async () => {
       const p = await newPage({ context: { viewport: { width: 375, height: 800 }, colorScheme: scheme } });
       await p.selectOption('#yearSelect', '2025');
-      for (const tab of ['guide', 'dashboard', 'expenses', 'profile', 'review', 'checklist', 'data']) {
-        await p.click(`[data-tab=${tab}]`);
-        if (tab === 'profile') await p.click('#modeMonth');
+      // main pages from the bottom bar, the rest through More
+      for (const tab of ['dashboard', 'expenses', 'profile', 'review', 'guide', 'checklist', 'help', 'data']) {
+        if (await p.isVisible(`.tabs [data-tab=${tab}]`)) await p.click(`.tabs [data-tab=${tab}]`);
+        else { await p.click('#moreBtn'); await p.click(`#moreSheet .more-item:nth-child(${['guide', 'checklist', 'help', 'data'].indexOf(tab) + 1})`); }
+        assert.equal(await p.isVisible(`#tab-${tab}`), true, tab);
+        if (tab === 'profile') { await p.click('#modeMonth'); await p.$$eval('#optChips .opt-chip', (b) => b.forEach((x) => x.click())); }
         await p.$$eval('details', (d) => d.forEach((x) => { x.open = true; }));
         assert.equal(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, tab);
       }

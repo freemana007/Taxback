@@ -28,26 +28,28 @@
 
   <div class="shell">
   <nav class="tabs" role="tablist" aria-label="Sections">
-    <button role="tab" data-tab="guide" data-icon="home" aria-selected="true"><span class="tab-label">Start</span></button>
-    <button role="tab" data-tab="dashboard" data-icon="chart"><span class="tab-label">Overview</span></button>
+    <button role="tab" data-tab="dashboard" data-icon="home" aria-selected="true"><span class="tab-label">Home</span></button>
     <button role="tab" data-tab="expenses" data-icon="receipt"><span class="tab-label">Receipts</span></button>
     <button role="tab" data-tab="profile" data-icon="wallet"><span class="tab-label">Income</span></button>
     <button role="tab" data-tab="review" data-icon="search"><span class="tab-label">Review</span></button>
-    <button role="tab" data-tab="checklist" data-icon="check"><span class="tab-label">Checklist</span></button>
-    <button role="tab" data-tab="data" data-icon="shield"><span class="tab-label">Backup</span></button>
+    <span class="nav-divider" aria-hidden="true"></span>
+    <button role="tab" class="nav-secondary" data-tab="guide" data-icon="list"><span class="tab-label">Claim guide</span></button>
+    <button role="tab" class="nav-secondary" data-tab="checklist" data-icon="check"><span class="tab-label">Checklist</span></button>
+    <button role="tab" class="nav-secondary" data-tab="help" data-icon="help"><span class="tab-label">Help</span></button>
+    <button role="tab" class="nav-secondary" data-tab="data" data-icon="shield"><span class="tab-label">Backup</span></button>
+    <button type="button" class="nav-more" id="moreBtn" data-icon="more" aria-haspopup="true" aria-expanded="false" aria-controls="moreSheet"><span class="tab-label">More</span></button>
   </nav>
+  <div class="more-sheet" id="moreSheet" role="menu" aria-label="More" hidden></div>
 
   <main>
     <div id="deadlineBanner"></div>
 
     <!-- START HERE -->
-    <section id="tab-guide" class="tab">
-      <div class="card intro">
-        <h2>Get your tax back in 6 steps</h2>
-        <p>Most people who work for an employer pay too much tax because they never claim what they're owed. You don't need to know anything about tax. Follow these steps in order. Each one tells you exactly what to look for and where.</p>
-        <p class="muted small">Working on tax year <strong class="yr"></strong>. Change the year at the top to work on another one.</p>
+    <section id="tab-guide" class="tab" hidden>
+      <div class="page-head">
+        <h2>Claim guide</h2>
+        <p class="muted">Find what you can claim for <strong class="yr"></strong>, then send it to Revenue.</p>
       </div>
-      <ol class="steps" id="guideSteps"></ol>
       <div class="card" id="quizCard">
         <h2>What can I claim?</h2>
         <p class="muted small">Answer yes or no. Every “yes” is money you can probably get back.</p>
@@ -62,31 +64,25 @@
         <ol class="claim-steps" id="claimSteps"></ol>
         <p class="muted small" id="receiptsApp"></p>
       </div>
-      <div class="card">
-        <h2>When life changes</h2>
-        <p class="muted small">How common changes affect your tax, and what to do.</p>
-        <div class="accordion" id="lifeEvents"></div>
-      </div>
-      <div class="card">
-        <h2>Reminders</h2>
-        <p class="muted small">Add the dates that matter to your calendar.</p>
-        <ul class="reminders" id="reminders"></ul>
-      </div>
-      <div class="card">
-        <h2>Words you'll see</h2>
-        <dl class="glossary" id="glossary"></dl>
-      </div>
     </section>
 
     <!-- OVERVIEW -->
-    <section id="tab-dashboard" class="tab" hidden>
+    <section id="tab-dashboard" class="tab">
       <div class="hero">
         <p class="hero-eyebrow" id="heroEyebrow"></p>
+        <div class="hero-empty" id="heroEmpty" hidden>
+          <h2>Let’s find your refund</h2>
+          <p>Most people who work for an employer are owed something back. You don’t need to know anything about tax. It takes about 10 minutes.</p>
+        </div>
         <div class="stats" id="stats"></div>
         <div class="hero-foot" id="heroNext"></div>
       </div>
       <p class="notice" id="yearNote" hidden></p>
-      <div class="grid2">
+      <div class="steps-wrap">
+        <h2 class="section-title">Your steps</h2>
+        <ol class="steps" id="guideSteps"></ol>
+      </div>
+      <div class="grid2 detail">
         <div class="card">
           <h2>What your claims are worth</h2>
           <p class="muted small">Tax saved by each relief for the selected year, based on your income and receipts.</p>
@@ -100,20 +96,42 @@
           <table class="tbl" id="calcTable"></table>
         </div>
       </div>
-      <div class="card">
+      <div class="card detail">
         <h2>Income tax, USC and PRSI</h2>
         <p class="muted small">Everything taken from your pay for the year. Tax claims only reduce income tax; USC and PRSI don't change.</p>
-        <div class="scroll"><table class="tbl" id="chargesTable"></table></div>
+        <div class="scroll"><table class="tbl stack" id="chargesTable"></table></div>
         <p class="muted small" id="chargesNote"></p>
       </div>
       <div class="card" id="saveCard">
         <h2>Ways to pay less</h2>
         <div id="saveTips"></div>
       </div>
-      <div class="card">
+      <div class="card detail">
         <h2>All open years</h2>
         <p class="muted small">You can claim back up to 4 years. Each year closes on 31 December, four years later.</p>
-        <div class="scroll"><table class="tbl" id="yearsTable"></table></div>
+        <div class="scroll"><table class="tbl stack" id="yearsTable"></table></div>
+      </div>
+    </section>
+
+    <!-- HELP -->
+    <section id="tab-help" class="tab" hidden>
+      <div class="page-head">
+        <h2>Help</h2>
+        <p class="muted">Life changes, reminders and the words you’ll see.</p>
+      </div>
+      <div class="card">
+        <h2>When life changes</h2>
+        <p class="muted small">How common changes affect your tax, and what to do.</p>
+        <div class="accordion" id="lifeEvents"></div>
+      </div>
+      <div class="card">
+        <h2>Reminders</h2>
+        <p class="muted small">Add the dates that matter to your calendar.</p>
+        <ul class="reminders" id="reminders"></ul>
+      </div>
+      <div class="card">
+        <h2>Words you'll see</h2>
+        <dl class="glossary" id="glossary"></dl>
       </div>
     </section>
 
@@ -205,27 +223,30 @@
           <label class="widowed-only">Year your spouse or partner died
             <input name="bereavementYear" type="number" min="1990" max="2030" step="1" inputmode="numeric">
           </label>
-          <h3 class="wide form-sub">Your situation</h3>
-          <p class="hint wide">These can each be worth a tax credit. Tick or fill in whatever applies.</p>
-          <label class="check not-married-only">
+          <label class="check not-married-only opt opt-children">
             <input name="singleParent" type="checkbox"> A child lives with me for most of the year
           </label>
-          <label>Number of dependent children
+          <label class="opt opt-children">Number of dependent children
             <input name="children" type="number" min="0" max="20" step="1" inputmode="numeric">
           </label>
-          <label class="check">
+          <label class="check opt opt-blind">
             <input name="blindYou" type="checkbox"> I’m blind or severely visually impaired
           </label>
-          <label class="check spouse-only">
+          <label class="check spouse-only opt opt-blind">
             <input name="blindSpouse" type="checkbox"> My spouse is blind or severely visually impaired
           </label>
-          <label>Children with a permanent incapacity
+          <label class="opt opt-children">Children with a permanent incapacity
             <input name="incapChildren" type="number" min="0" max="10" step="1" inputmode="numeric">
           </label>
-          <label>Dependent relatives I support
+          <label class="opt opt-relative">Dependent relatives I support
             <input name="depRelatives" type="number" min="0" max="10" step="1" inputmode="numeric">
           </label>
         </form>
+      </div>
+      <div class="card" id="situationCard">
+        <h2>Does any of this apply to you?</h2>
+        <p class="muted small">Tap what applies and we’ll ask a little more. Each can be worth money back. Skip anything that doesn’t.</p>
+        <div class="opt-chips" id="optChips"></div>
       </div>
       <div class="card">
         <h2>Tax year <span class="yr"></span></h2>
@@ -267,7 +288,7 @@
           <label>Your income tax paid (€)
             <input name="youTaxPaid" type="number" step="0.01" min="0" inputmode="decimal">
           </label>
-          <label>Your taxable social welfare (€)
+          <label class="opt opt-welfare">Your taxable social welfare (€)
             <input name="youWelfare" type="number" step="0.01" min="0" inputmode="decimal">
           </label>
           <label class="spouse-only">Spouse's gross pay (€)
@@ -276,46 +297,45 @@
           <label class="spouse-only">Spouse's income tax paid (€)
             <input name="spouseTaxPaid" type="number" step="0.01" min="0" inputmode="decimal">
           </label>
-          <label class="spouse-only">Spouse's taxable social welfare (€)
+          <label class="spouse-only opt opt-welfare">Spouse's taxable social welfare (€)
             <input name="spouseWelfare" type="number" step="0.01" min="0" inputmode="decimal">
           </label>
-          <h3 class="wide form-sub">USC and PRSI</h3>
-          <p class="hint wide">The app works these out from your pay. Add what you paid to see if you paid the right amount. All optional.</p>
-          <label>Pension taken from your wages (€)
+          <h3 class="wide form-sub opt opt-uscprsi">Check your USC and PRSI</h3>
+          <p class="hint wide opt opt-uscprsi">The app works these out from your pay. Add what you paid to see if it was right.</p>
+          <label class="opt opt-uscprsi">Pension taken from your wages (€)
             <input name="youPensionWages" type="number" step="0.01" min="0" inputmode="decimal">
           </label>
-          <label>USC you paid (€)
+          <label class="opt opt-uscprsi">USC you paid (€)
             <input name="youUscPaid" type="number" step="0.01" min="0" inputmode="decimal">
           </label>
-          <label>PRSI you paid (€)
+          <label class="opt opt-uscprsi">PRSI you paid (€)
             <input name="youPrsiPaid" type="number" step="0.01" min="0" inputmode="decimal">
           </label>
-          <label class="check">
+          <label class="check opt opt-uscprsi">
             <input name="youMedicalCard" type="checkbox"> I have a full medical card
           </label>
-          <label class="spouse-only">Pension taken from spouse's wages (€)
+          <label class="spouse-only opt opt-uscprsi">Pension taken from spouse's wages (€)
             <input name="spousePensionWages" type="number" step="0.01" min="0" inputmode="decimal">
           </label>
-          <label class="spouse-only">USC spouse paid (€)
+          <label class="spouse-only opt opt-uscprsi">USC spouse paid (€)
             <input name="spouseUscPaid" type="number" step="0.01" min="0" inputmode="decimal">
           </label>
-          <label class="spouse-only">PRSI spouse paid (€)
+          <label class="spouse-only opt opt-uscprsi">PRSI spouse paid (€)
             <input name="spousePrsiPaid" type="number" step="0.01" min="0" inputmode="decimal">
           </label>
-          <label class="check spouse-only">
+          <label class="check spouse-only opt opt-uscprsi">
             <input name="spouseMedicalCard" type="checkbox"> My spouse has a full medical card
           </label>
-          <h3 class="wide form-sub">Other details</h3>
-          <label>Days worked from home
+          <label class="opt opt-wfh">Days worked from home
             <input name="wfhDays" type="number" min="0" max="366" step="1">
           </label>
-          <label>Mortgage interest paid in 2022 (€)
+          <label class="opt opt-mortgage">Mortgage interest paid in 2022 (€)
             <input name="mortgageInterest2022" type="number" step="0.01" min="0" inputmode="decimal">
           </label>
-          <label class="check spouse-only">
+          <label class="check spouse-only opt opt-carer">
             <input name="homeCarer" type="checkbox"> One of us is a home carer
           </label>
-          <label class="spouse-only carer-only">Home carer's own income (€)
+          <label class="spouse-only carer-only opt opt-carer">Home carer's own income (€)
             <input name="carerIncome" type="number" step="0.01" min="0" inputmode="decimal">
           </label>
           

@@ -14,10 +14,14 @@ Or serve it locally: `npm start`, then visit http://localhost:8080.
 
 ## What it does
 
-The app works like a phone app: a sidebar on wide screens and a bottom tab bar
-on phones. The Overview opens with your estimated refund, progress through the
-six steps and a button for the next one. Receipt types are picked from tiles,
-and each receipt you add shows what it saves you.
+The app works like a phone app: a sidebar on wide screens and a bottom bar on
+phones with four main pages (Home, Receipts, Income, Review) and a More menu
+(Claim guide, Checklist, Help, Backup). It opens on the latest finished tax
+year. Home leads with your estimated refund (or a welcome on first visit), your
+progress through six steps with only the next one open, then the breakdown.
+The Income page asks only for pay and tax at first; other questions appear
+when you tap what applies to you. Receipt types are picked from tiles, and each
+receipt you add shows what it saves you.
 
 - **Start here**: a 6-step walkthrough for people new to tax. It shows which
   step to do next, has yes/no questions to find what you can claim, explains

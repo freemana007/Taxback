@@ -10,7 +10,7 @@
 
   const MYACCOUNT = 'https://www.revenue.ie/en/online-services/services/manage-your-record/myaccount.aspx';
 
-  // Help shown under each field in "Income & settings".
+  // Help shown under each field in "Income".
   const FIELDS = {
     singleParent: {
       title: 'Who counts for the Single Person Child Carer Credit?',
@@ -212,7 +212,7 @@
       counts: ['Interest on a mortgage for the home you live in, if the loan balance on 31 December 2022 was between €80,000 and €500,000'],
       notCounts: ['Buy-to-let mortgages', 'The part of your repayments that pays off the loan itself'],
       find: ['Your lender’s **annual mortgage statement** for the year. It shows “interest paid”.'],
-      calc: 'Enter the total interest paid in the year. Also enter your 2022 interest in Income & settings, as the relief is on the increase.',
+      calc: 'Enter the total interest paid in the year. Also enter your 2022 interest in Income, as the relief is on the increase.',
       keep: 'Keep the annual statements for this year and 2022.',
     },
     pension: {
@@ -229,7 +229,7 @@
         'Log in to your electricity, gas and broadband providers’ websites. Most have a **yearly statement** or a list of bills.',
         'Or add up the bills you got in the year.',
       ],
-      calc: 'Add up a year of bills. If you share bills, enter only your share. Set your days worked from home in Income & settings. The app works out the 30% for those days.',
+      calc: 'Add up a year of bills. If you share bills, enter only your share. Set your days worked from home in Income. The app works out the 30% for those days.',
       keep: 'Keep the bills.',
     },
     nursingHome: {
@@ -410,7 +410,7 @@
     },
     {
       title: 'Enter your income and claims',
-      text: 'Fill in your income panels. Then open the **Tax credits and reliefs** panel and the **Health expenses** panel, and enter the totals from this app’s Overview (health expenses, rent, remote working, pension, tuition and so on).',
+      text: 'Fill in your income panels. Then open the **Tax credits and reliefs** panel and the **Health expenses** panel, and enter the totals from Taxback’s Home page (health expenses, rent, remote working, pension, tuition and so on).',
     },
     {
       title: 'Calculate, sign and submit',

@@ -53,6 +53,9 @@ describe('your situation credits', () => {
   it('single parent credit shows in the claims and the tax', async () => {
     const p = await newPage({ state: base() });
     await p.click('[data-tab=profile]');
+    // only asked once you say it applies
+    assert.equal(await p.isVisible('#profileForm [name=singleParent]'), false);
+    await p.click('#optChips [data-opt=children]');
     await p.check('#profileForm [name=singleParent]');
     await p.click('[data-tab=dashboard]');
     // 60,000: band 48,000 → 9,600 + 4,800 = 14,400 − 2,000 − 2,000 − 1,900 = 8,500; refund 11,200 − 8,500 = 2,700
@@ -141,7 +144,7 @@ describe('planning and claiming', () => {
     const p = await newPage({ state: base({ expenses: [{ id: 'h', year: 2025, date: '2025-05-01', category: 'health', amount: 420, person: 'you' }] }) });
     await p.click('[data-tab=dashboard]');
     // age 40 → limit 15,000; 16,000 of income taxed at 40% → all 15,000 saves 6,000
-    assert.match(await text(p, '#saveTips'), /Pay up to €15,000 more into a pension .* save €6,000/);
+    assert.match(await text(p, '#saveTips'), /Each €1,000 you put into a pension saves you €400 in tax\..*up to €15,000 would get 40% back, €6,000 in all/);
     await p.click('[data-tab=guide]');
     const sheet = await p.$$eval('#claimSheet tr', (r) => r.map((x) => x.cells[1].textContent));
     assert.deepEqual(sheet, ['420.00']);
@@ -229,6 +232,28 @@ describe('sync across devices', () => {
     await p.click('[data-tab=data]');
     assert.match(await text(p, '#syncText'), /Sync works on the hosted Taxback page/);
     assert.equal(await p.isDisabled('#syncToggle'), true);
+    await p.context().close();
+  });
+});
+
+describe('phone layout', () => {
+  it('uses a More menu and stacks wide tables', async () => {
+    const p = await newPage({ state: base({ profile: { status: 'married', youDob: '1985-06-01', spouseDob: '1987-01-01' },
+      years: { 2025: { youGross: 70000, youTaxPaid: 14000, spouseGross: 20000, spouseTaxPaid: 2000 } } }), context: { viewport: { width: 390, height: 844 } } });
+    assert.equal(await p.isVisible('.tabs [data-tab=checklist]'), false);
+    await p.click('#moreBtn');
+    assert.equal(await p.getAttribute('#moreBtn', 'aria-expanded'), 'true');
+    await p.click('#moreSheet >> text=Help');
+    assert.equal(await p.isVisible('#tab-help'), true);
+    assert.equal(await p.isVisible('#moreSheet'), false);
+    assert.equal(await p.getAttribute('#moreBtn', 'class'), 'nav-more current');
+    await p.click('.tabs [data-tab=dashboard]');
+    // stacked: each figure carries its column name, and nothing is cut off
+    const label = await p.$eval('#chargesTable tr:nth-child(2) td:nth-child(2)', (td) => getComputedStyle(td, '::before').content);
+    assert.equal(label, '"Due (estimate)"');
+    const fits = await p.$eval('#chargesTable', (t) => t.scrollWidth <= t.parentElement.clientWidth);
+    assert.equal(fits, true);
+    assert.deepEqual(p.errors, []);
     await p.context().close();
   });
 });

@@ -21,7 +21,8 @@
       years: {},
       expenses: [],
       checklist: {},
-      selectedYear: new Date().getFullYear(),
+      selectedYear: new Date().getFullYear() - 1, // the latest year you can claim a refund for
+      dismissed: {},
     };
   }
 
@@ -109,6 +110,9 @@
     check: 'M5 12.5l4 4L19 7',
     shield: 'M12 3.5 5 6v5.5c0 4.2 2.9 7.7 7 9 4.1-1.3 7-4.8 7-9V6zM9 12l2 2 4-4',
     plus: 'M12 5v14M5 12h14',
+    list: 'M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01',
+    help: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .8-1 1.5v.7M12 17h.01',
+    more: 'M5 12h.01M12 12h.01M19 12h.01',
     search: 'M10.5 17a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13zM15.5 15.5 20 20',
     camera: 'M4 8.5A1.5 1.5 0 0 1 5.5 7h2l1.5-2h6l1.5 2h2A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5zM12 16a3 3 0 1 0 0-6 3 3 0 0 0 0 6z',
     health: 'M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10zM12 9.5v5M9.5 12h5',
@@ -164,11 +168,25 @@
   }
 
   function rows(table, data) {
+    const head = data.find((r) => r.head);
     table.replaceChildren(...data.map((r) => {
       const tr = el('tr', { class: r.cls });
-      r.cells.forEach((c, i) => tr.append(el(r.head ? 'th' : 'td', { class: i > 0 ? 'num' : '' }, [c])));
+      r.cells.forEach((c, i) => {
+        const label = !r.head && !r.nolabel && head && i > 0 ? String(head.cells[i] || '') : null;
+        tr.append(el(r.head ? 'th' : 'td', { class: i > 0 ? 'num' : '', 'data-label': label || null }, [c]));
+      });
       return tr;
     }));
+  }
+
+  // Same for tables built directly in the Review tab.
+  function labelCells(table) {
+    const ths = [...table.querySelectorAll('tr:first-child th')].map((t) => t.textContent);
+    table.querySelectorAll('tr').forEach((tr) => [...tr.children].forEach((td, i) => {
+      if (td.tagName === 'TD' && i > 0 && ths[i]) td.setAttribute('data-label', ths[i]);
+    }));
+    table.classList.add('stack');
+    return table;
   }
 
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
@@ -187,13 +205,21 @@
     const oldest = Tax.openYears(now)[0];
     const days = Tax.daysUntil(Tax.claimDeadline(oldest), now);
     const box = $('#deadlineBanner');
-    if (days > 120) { box.replaceChildren(); return; }
+    const key = `deadline-${oldest}`;
+    state.dismissed = state.dismissed || {};
+    if (days > 120 || state.dismissed[key]) { box.replaceChildren(); return; }
     const v = Tax.claimValues(inputFor(oldest));
-    const worth = v.total > 0 ? ` You have ${eur.format(v.total)} of claims logged for ${oldest}.` : '';
+    const lead = v.total > 0
+      ? `You have ${eur0.format(v.total)} to claim for ${oldest}.`
+      : `You may be owed money for ${oldest} too.`;
     box.replaceChildren(el('div', { class: 'banner' }, [
-      el('strong', { text: `${days} day${days === 1 ? '' : 's'} left to claim for ${oldest}.` }),
-      ` Claims for ${oldest} close on 31 December ${oldest + 4}.${worth} `,
-      el('a', { href: '#', text: `Go to ${oldest}`, onclick: (e) => { e.preventDefault(); selectYear(oldest); } }),
+      el('div', { class: 'banner-text' }, [el('strong', { text: lead + ' ' }),
+        `Claims close in ${days} day${days === 1 ? '' : 's'} (31 December ${oldest + 4}).`]),
+      Number(state.selectedYear) !== oldest
+        ? el('button', { type: 'button', class: 'small-btn', text: `Look at ${oldest}`, onclick: () => selectYear(oldest) }) : '',
+      el('button', { type: 'button', class: 'link banner-close', 'aria-label': 'Dismiss', text: 'Not now', onclick: () => {
+        state.dismissed[key] = true; save(); renderDeadline();
+      } }),
     ]));
   }
 
@@ -222,7 +248,7 @@
         cls: totalRefund >= 0 ? 'good' : 'bad',
       });
     } else {
-      stats.push({ label: 'Estimated refund', value: '—', note: 'Add tax paid in Income & settings' });
+      stats.push({ label: 'Estimated refund', value: '—', note: 'Add tax paid in Income' });
     }
     stats.push({
       label: 'Claim deadline',
@@ -230,11 +256,21 @@
       note: days > 0 ? `${days} days left` : 'Over 4 years ago',
       cls: days > 0 && days <= 120 ? 'warn' : '',
     });
+    const money = (v) => {
+      const m = /^(.*?)(\.\d\d)$/.exec(v);
+      return m ? [m[1], el('span', { class: 'cents', text: m[2] })] : [v];
+    };
     $('#stats').replaceChildren(...stats.map((s) => el('div', { class: 'stat ' + (s.cls || '') }, [
       el('div', { class: 'stat-label', text: s.label }),
-      el('div', { class: 'stat-value', text: s.value }),
+      el('div', { class: 'stat-value' }, money(s.value)),
       el('div', { class: 'stat-note', text: s.note }),
     ])));
+    // First run: no pay and no receipts yet, so lead with a welcome instead of empty numbers.
+    const firstRun = !base.totalGross && !count && !base.hasTaxPaid;
+    $('#heroEmpty').hidden = !firstRun;
+    $('#stats').hidden = firstRun;
+    $('#fab').classList.toggle('first-run', firstRun);
+    $('#tab-dashboard').classList.toggle('first-run', firstRun);
 
     // A refund estimate for a year that isn't over only works if pay and tax
     // are both full-year estimates (or both figures to date).
@@ -259,7 +295,7 @@
     }
     if (!claimRows.length) {
       const msg = count && !base.totalGross
-        ? `Add your ${y} gross pay under Income & settings to value these receipts.`
+        ? `Add your ${y} gross pay under Income to value these receipts.`
         : 'No claims yet. Add receipts to see what they save you.';
       rows($('#claimTable'), [{ cells: [msg, ''], cls: 'empty' }]);
     } else {
@@ -327,8 +363,8 @@
     const payAndWelfare = who.reduce((a, p) => a + (base.uscPrsiDetail[p] ? base.uscPrsiDetail[p].payBeforePension : 0), 0) + base.totalWelfare;
     if (payAndWelfare > 0) {
       const takeHome = r2(payAndWelfare - totalDue - pension);
-      data.push({ cls: 'sub', cells: [pension ? 'Take-home pay (after pension)' : 'Take-home pay', eur.format(takeHome), '', ''] });
-      data.push({ cls: 'muted', cells: ['Share of income taken', `${Math.round((totalDue / payAndWelfare) * 1000) / 10}%`, '', ''] });
+      data.push({ cls: 'sub', nolabel: true, cells: [pension ? 'Take-home pay (after pension)' : 'Take-home pay', eur.format(takeHome), '', ''] });
+      data.push({ cls: 'muted', nolabel: true, cells: ['Share of income taken', `${Math.round((totalDue / payAndWelfare) * 1000) / 10}%`, '', ''] });
     }
     rows($('#chargesTable'), data);
 
@@ -343,7 +379,7 @@
     });
     if (base.uscPaid != null && base.uscPaid - base.usc.total >= 1) notes.push('You may have overpaid USC. Check you gave the right details (medical card, age), then ask Revenue to review it through myAccount.');
     notes.push('PRSI is worked out on your average week, so it can differ by a few euro from your payslips.');
-    if (!yd.youPensionWages && !yd.spousePensionWages) notes.push('If pension comes out of your wages, add it under Income & settings: USC and PRSI are charged before it comes off.');
+    if (!yd.youPensionWages && !yd.spousePensionWages) notes.push('If pension comes out of your wages, add it under Income: USC and PRSI are charged before it comes off.');
     $('#chargesNote').textContent = notes.join(' ');
   }
 
@@ -541,6 +577,7 @@
     PROFILE_NUM.forEach((k) => { if (document.activeElement !== pf[k]) pf[k].value = state.profile[k] ?? ''; });
     PROFILE_CHECK.forEach((k) => { pf[k].checked = !!state.profile[k]; });
     $$('.widowed-only').forEach((n) => { n.hidden = state.profile.status !== 'widowed'; });
+    renderOptChips();
     $$('.not-married-only').forEach((n) => { n.hidden = married(); });
     const y = Number(state.selectedYear);
     $$('.yr').forEach((n) => { n.textContent = y; });
@@ -875,7 +912,7 @@
     }));
   }
 
-  // ---------- Rates & data ----------
+  // ---------- Backup ----------
   function renderRates() {
     const years = Tax.YEARS;
     const fields = [
@@ -1166,7 +1203,7 @@
     ]);
   }
 
-  // Wraps each field in Income & settings with its help box.
+  // Wraps each field in Income with its help box.
   function attachFieldHelp() {
     Object.entries(Guide.FIELDS).forEach(([name, g]) => {
       const input = $(`#profileForm [name=${name}], #yearForm [name=${name}]`);
@@ -1213,6 +1250,7 @@
     showTab(tab);
     window.scrollTo({ top: 0 });
     if (focusSel) {
+      revealFor(focusSel);
       const n = $(focusSel);
       if (n) { n.focus({ preventScroll: true }); n.scrollIntoView({ block: 'center' }); }
     }
@@ -1239,7 +1277,7 @@
         el('span', { class: 'progress-label', text: done === steps.length ? `All ${steps.length} steps done for ${y}` : `${done} of ${steps.length} steps done${next ? ` · next: ${next.title.toLowerCase()}` : ''}` }),
         el('div', { class: 'progress-track', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': String(steps.length), 'aria-valuenow': String(done) }, [fill]),
       ]),
-      next ? el('button', { type: 'button', class: 'primary', text: next.action[0], onclick: () => { showTab('guide'); next.action[1](); } }) : '',
+      next ? el('button', { type: 'button', class: 'primary', text: done === 0 ? 'Start' : next.action[0], onclick: () => next.action[1]() }) : '',
     );
   }
 
@@ -1266,10 +1304,10 @@
       },
       {
         title: 'Find what you can claim',
-        text: 'Answer the yes/no questions below. Each “yes” is a type of receipt to add.',
+        text: 'Answer 9 yes/no questions. Each “yes” is something you can probably claim.',
         need: 'A couple of minutes',
         done: receipts > 0 || Guide.QUIZ.some(([cat]) => state.checklist[`${y}:quiz:${cat}`]),
-        action: ['Show the questions', () => $('#quizCard').scrollIntoView({ behavior: 'smooth' })],
+        action: ['Answer the questions', () => goTo('guide', '#quiz .seg')],
       },
       {
         title: 'Add your receipts',
@@ -1280,19 +1318,19 @@
       },
       {
         title: 'See what you’re owed',
-        text: 'The Overview shows what each claim is worth and your likely refund.',
+        text: 'Your refund is at the top of this page. Below it you can see what each claim is worth and how it’s worked out.',
         need: 'Nothing',
         done: total > 0,
-        action: ['Open Overview', () => goTo('dashboard')],
+        action: ['See the breakdown', () => { goTo('dashboard'); $('#claimTable').scrollIntoView({ behavior: 'smooth', block: 'center' }); }],
       },
       {
         title: 'Claim it from Revenue',
         text: claimRoute() === 'ros'
-          ? 'Enter your totals in your Form 11 tax return on ROS. The steps are below. Tick this when you’ve submitted it.'
-          : 'Copy your totals into myAccount. The steps are below. Tick this when you’ve sent it.',
+          ? 'Enter your totals in your Form 11 tax return on ROS. The Claim guide shows how. Tick this when you’ve submitted it.'
+          : 'Copy your totals into myAccount. The Claim guide lists every number and where it goes. Tick this when you’ve sent it.',
         need: claimRoute() === 'ros' ? 'ROS login (digital certificate and password)' : 'myAccount login',
         done: !!state.checklist[claimedKey],
-        action: ['Show how to claim', () => $('#claimSteps').scrollIntoView({ behavior: 'smooth' })],
+        action: ['Show me how to claim', () => goTo('guide', '#claimSheet')],
         tick: claimedKey,
       },
     ];
@@ -1306,17 +1344,19 @@
           state.checklist[s.tick] = e.target.checked; save(); renderAll();
         } }), `I’ve claimed for ${y}`,
       ]) : null;
+      // Only the next step is open; the rest are one line, so the list stays short.
+      const head = el('div', { class: 'step-head' }, [
+        el('h3', { text: s.title }),
+        el('span', { class: 'chip ' + status, text: status === 'done' ? 'Done' : status === 'next' ? 'Do this next' : 'To do' }),
+      ]);
+      const body = status === 'next'
+        ? [head, el('p', { text: s.text }), el('p', { class: 'muted small', text: 'You’ll need: ' + s.need }),
+          el('div', { class: 'actions' }, [btn].concat(extra ? [extra] : []))]
+        : [head, el('div', { class: 'actions step-compact' }, [
+          el('button', { type: 'button', class: 'link', text: status === 'done' ? 'Change' : s.action[0], onclick: s.action[1] })].concat(extra ? [extra] : []))];
       return el('li', { class: 'step ' + status }, [
         el('span', { class: 'step-num', 'aria-hidden': 'true', text: s.done ? '✓' : String(i + 1) }),
-        el('div', { class: 'step-body' }, [
-          el('div', { class: 'step-head' }, [
-            el('h3', { text: s.title }),
-            el('span', { class: 'chip ' + status, text: status === 'done' ? 'Done' : status === 'next' ? 'Do this next' : 'To do' }),
-          ]),
-          el('p', { text: s.text }),
-          el('p', { class: 'muted small', text: 'You’ll need: ' + s.need }),
-          el('div', { class: 'actions' }, [btn].concat(extra ? [extra] : [])),
-        ]),
+        el('div', { class: 'step-body' }, body),
       ]);
     }));
 
@@ -1464,7 +1504,7 @@
     const names = { personal: 'Personal credit', employee: 'Employee (PAYE) credit', ageCredit: 'Age credit', singleParent: 'Single Person Child Carer Credit',
       widowedParent: 'Widowed Parent Credit', blind: 'Blind Person’s Credit', incapChild: 'Incapacitated Child Credit', depRelative: 'Dependent Relative Credit', homeCarer: 'Home carer credit' };
     const list = Object.entries(names).filter(([k]) => e[k] > 0).map(([k, n]) => el('li', {}, [n, ': ', el('strong', { text: eur.format(e[k]) })]));
-    result.replaceChildren(el('div', { class: 'scroll' }, [table]), ...lines,
+    result.replaceChildren(el('div', { class: 'scroll' }, [labelCells(table)]), ...lines,
       el('details', { class: 'help' }, [el('summary', { text: married() ? 'Credits you’re entitled to between you' : 'Credits you’re entitled to' }),
         el('div', { class: 'help-body' }, [el('ul', { class: 'help-steps' }, list),
           el('p', { class: 'muted small', text: 'Credits for receipts (health, rent and so on) come on top once claimed.' })])]));
@@ -1552,7 +1592,7 @@
     const note = t.count
       ? `Using the credits (${eur.format(exp.credits)}) and band (${eur.format(exp.band)}) on your certificate, ${BASIS[basisOf].toLowerCase()} basis.`
       : `Using the credits (${eur.format(exp.credits)}) and band (${eur.format(exp.band)}) you should have. Add your Tax Credit Certificate above for an exact check.`;
-    box.replaceChildren(el('div', { class: 'scroll' }, [el('table', { class: 'tbl' }, rows)]),
+    box.replaceChildren(el('div', { class: 'scroll' }, [labelCells(el('table', { class: 'tbl' }, rows))]),
       el('p', { class: flagged ? 'flag bad' : 'flag ok', text: flagged
         ? `${flagged} payslip${flagged === 1 ? '' : 's'} took a different amount than expected. Small differences can come from bonuses, benefits or a credit change during the year; bigger ones are worth asking your payroll about.`
         : 'Every payslip matches what your credits and band should give.' }),
@@ -1605,7 +1645,7 @@
     }
     if (sol.solCredits !== '' && sol.solCredits != null && base.totalCredits - Number(sol.solCredits) >= 1) {
       const missing = r2(base.totalCredits - Number(sol.solCredits));
-      lines.push(el('p', { class: 'flag bad', text: `Revenue gave ${eur.format(missing)} fewer credits than Taxback expects. You may not have claimed everything: compare with “Your numbers for myAccount” on the Start page and add what’s missing to your return.` }));
+      lines.push(el('p', { class: 'flag bad', text: `Revenue gave ${eur.format(missing)} fewer credits than Taxback expects. You may not have claimed everything: compare with “Your numbers for myAccount” in the Claim guide and add what’s missing to your return.` }));
     }
     if (sol.solLiability !== '' && sol.solPaid !== '' && sol.solLiability != null && sol.solPaid != null) {
       const bal = r2(Number(sol.solPaid) - Number(sol.solLiability));
@@ -1613,7 +1653,7 @@
         ? `Revenue’s figures mean you overpaid ${eur.format(bal)}. It’s paid to your bank account, usually within about 5 working days.`
         : `Revenue’s figures mean you underpaid ${eur.format(-bal)}. Revenue usually collects this by reducing your credits over up to 4 years. You can also pay it at once in myAccount.` }));
     }
-    box.replaceChildren(el('div', { class: 'scroll' }, [el('table', { class: 'tbl' }, rows)]), ...lines);
+    box.replaceChildren(el('div', { class: 'scroll' }, [labelCells(el('table', { class: 'tbl' }, rows))]), ...lines);
   }
 
   async function readStatementFile(file, password) {
@@ -1744,8 +1784,10 @@
     if (base.totalGross > 0) {
       const plan = Tax.avcPlan(input);
       if (plan.at40 >= 100) {
-        tips.push(el('li', {}, [el('strong', { text: `Pay up to ${eur0.format(plan.at40)} more into a pension (AVC or PRSA) and save ${eur0.format(plan.saving)} in tax. ` }),
-          `That part of your income is taxed at 40%, so each €100 you put in costs you only €60. ${y < new Date().getFullYear() ? `For ${y}, it must be paid by 31 October ${y + 1}.` : 'Payments by 31 October next year can still count for this year.'}`]));
+        tips.push(el('li', {}, [el('strong', { text: 'Each €1,000 you put into a pension saves you €400 in tax. ' }),
+          `Part of your income is taxed at 40%, so a pension top-up (AVC or PRSA) of up to ${eur0.format(plan.at40)} would get 40% back, ${eur0.format(plan.saving)} in all. `,
+          `${y < new Date().getFullYear() ? `For ${y}, it must be paid by 31 October ${y + 1}.` : 'Payments by 31 October next year can still count for this year.'} `,
+          el('span', { class: 'muted', text: 'Only put in what you can afford to lock away until retirement. A financial adviser can help you decide.' })]));
       } else if (plan.totalRoom >= 100) {
         tips.push(el('li', {}, [el('strong', { text: 'Pension top-ups save 20% for you this year. ' }),
           `You have room for about ${eur0.format(plan.totalRoom)} more, but none of your income is taxed at 40%, so it saves less.`]));
@@ -1944,11 +1986,130 @@
     sync.timer = setTimeout(push, 1200);
   }
 
+  // ---------- More menu (phones) ----------
+  function buildMore() {
+    const sheet = $('#moreSheet');
+    sheet.replaceChildren(...$$('.tabs .nav-secondary').map((b) => {
+      const item = el('button', { type: 'button', role: 'menuitem', class: 'more-item', onclick: () => { closeMore(); goTo(b.dataset.tab); } },
+        [icon(b.dataset.icon), b.textContent.trim()]);
+      return item;
+    }));
+    $('#moreBtn').addEventListener('click', () => (sheet.hidden ? openMore() : closeMore()));
+    document.addEventListener('click', (e) => { if (!sheet.hidden && !sheet.contains(e.target) && !$('#moreBtn').contains(e.target)) closeMore(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !sheet.hidden) { closeMore(); $('#moreBtn').focus(); } });
+  }
+  function openMore() {
+    $('#moreSheet').hidden = false;
+    $('#moreBtn').setAttribute('aria-expanded', 'true');
+    const first = $('#moreSheet .more-item');
+    if (first) first.focus();
+  }
+  function closeMore() {
+    const sheet = $('#moreSheet');
+    if (!sheet) return;
+    sheet.hidden = true;
+    $('#moreBtn').setAttribute('aria-expanded', 'false');
+  }
+
+  // ---------- Income: only ask what applies ----------
+  // Each group is shown when you tap its chip, or when it already holds a value.
+  const OPT_GROUPS = [
+    { key: 'children', label: 'Children (I’m a single parent, or a child has a disability)', profile: ['singleParent', 'children', 'incapChildren'] },
+    { key: 'welfare', label: 'Social welfare (Illness or Maternity Benefit, State Pension…)', year: ['youWelfare', 'spouseWelfare'] },
+    { key: 'wfh', label: 'I work from home some days', year: ['wfhDays'], cats: ['remoteWorking'] },
+    { key: 'mortgage', label: 'I have a mortgage', year: ['mortgageInterest2022'], cats: ['mortgageInterest'] },
+    { key: 'carer', label: 'One of us cares for someone at home', year: ['homeCarer', 'carerIncome'], marriedOnly: true },
+    { key: 'relative', label: 'I support an older or ill relative', profile: ['depRelatives'] },
+    { key: 'blind', label: 'Blind or visually impaired', profile: ['blindYou', 'blindSpouse'] },
+    { key: 'uscprsi', label: 'Check my USC and PRSI', year: ['youPensionWages', 'spousePensionWages', 'youUscPaid', 'spouseUscPaid', 'youPrsiPaid', 'spousePrsiPaid', 'youMedicalCard', 'spouseMedicalCard'] },
+  ];
+  const filled = (v) => v === true || (v !== '' && v != null && v !== false && Number(v) !== 0);
+
+  function groupHasValue(g) {
+    const y = Number(state.selectedYear);
+    const yd = state.years[y] || {};
+    return (g.profile || []).some((k) => filled(state.profile[k]))
+      || (g.year || []).some((k) => filled(yd[k]))
+      || (g.cats || []).some((c) => state.expenses.some((e) => Number(e.year) === y && e.category === c));
+  }
+
+  function groupShown(g) {
+    state.profile.reveal = state.profile.reveal || {};
+    return !!state.profile.reveal[g.key] || groupHasValue(g);
+  }
+
+  function clearGroup(g) {
+    const yd = yearData(Number(state.selectedYear));
+    (g.profile || []).forEach((k) => { state.profile[k] = typeof state.profile[k] === 'boolean' ? false : ''; });
+    (g.year || []).forEach((k) => { yd[k] = typeof yd[k] === 'boolean' ? false : ''; });
+  }
+
+  // Chips are built once and then updated in place, so a tap isn't lost when
+  // leaving a box (which saves and refreshes the page) happens on the same tap.
+  let chipsKey = '';
+  function onChip(g, ev) {
+    const on = groupShown(g);
+    state.profile.reveal = state.profile.reveal || {};
+    if (!on) {
+      state.profile.reveal[g.key] = true; save(); renderAll();
+      const first = $(`.opt-${g.key} input, .opt-${g.key} select`);
+      if (first) first.focus();
+      return;
+    }
+    const turnOff = () => { state.profile.reveal[g.key] = false; clearGroup(g); save(); renderAll(); };
+    if (groupHasValue(g)) armConfirm(ev.currentTarget, 'Tap again to clear', turnOff);
+    else turnOff();
+  }
+
+  function renderOptChips() {
+    const groups = OPT_GROUPS.filter((g) => !g.marriedOnly || married());
+    const key = groups.map((g) => g.key).join();
+    if (key !== chipsKey) {
+      chipsKey = key;
+      $('#optChips').replaceChildren(...groups.map((g) => el('button', { type: 'button', class: 'opt-chip', 'data-opt': g.key,
+        onclick: (ev) => onChip(g, ev) }, [el('span', { class: 'opt-tick', 'aria-hidden': 'true' }), el('span', { class: 'opt-label', text: g.label })])));
+    }
+    groups.forEach((g) => {
+      const b = $(`#optChips [data-opt="${g.key}"]`);
+      if (!b || b.dataset.armed) return;
+      const on = groupShown(g);
+      if (!b.querySelector('.opt-tick')) {
+        b.classList.remove('armed');
+        b.replaceChildren(el('span', { class: 'opt-tick', 'aria-hidden': 'true' }), el('span', { class: 'opt-label', text: g.label }));
+      }
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-pressed', String(on));
+      b.querySelector('.opt-tick').textContent = on ? '✓' : '+';
+    });
+    OPT_GROUPS.forEach((g) => {
+      const show = groupShown(g) && (!g.marriedOnly || married());
+      $$(`.opt-${g.key}`).forEach((n) => n.classList.toggle('opt-hidden', !show));
+    });
+  }
+
+  // Before jumping to a field, make sure its group is open.
+  function revealFor(sel) {
+    const n = $(sel);
+    const holder = n && n.closest('[class*="opt-"]');
+    if (!holder) return;
+    const m = /opt-([a-z]+)/.exec([...holder.classList].filter((c) => c !== 'opt-hidden').join(' '));
+    if (m && holder.classList.contains('opt-hidden')) {
+      state.profile.reveal = state.profile.reveal || {};
+      state.profile.reveal[m[1]] = true;
+      save();
+      renderOptChips();
+    }
+  }
+
   // ---------- Navigation ----------
   function showTab(name) {
     $$('.tabs [role=tab]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === name)));
     $$('.tab').forEach((s) => { s.hidden = s.id !== 'tab-' + name; });
     $('#fab').hidden = name !== 'dashboard';
+    $('#deadlineBanner').hidden = name !== 'dashboard';
+    const secondary = !!$(`.tabs .nav-secondary[data-tab="${name}"]`);
+    $('#moreBtn').classList.toggle('current', secondary);
+    closeMore();
     try { sessionStorage.setItem('taxback.tab', name); } catch (e) { /* ignore */ }
   }
 
@@ -1977,6 +2138,14 @@
   function init() {
     if (!Tax.YEARS.includes(Number(state.selectedYear))) state.selectedYear = Tax.openYears(new Date()).slice(-1)[0];
     $$('.tabs [data-icon]').forEach((b) => b.prepend(icon(b.dataset.icon)));
+    buildMore();
+    let lastY = window.scrollY;
+    window.addEventListener('scroll', () => {
+      const y = window.scrollY;
+      $('#fab').classList.toggle('tucked', y > lastY + 4 && y > 120);
+      if (y < lastY - 4) $('#fab').classList.remove('tucked');
+      lastY = y;
+    }, { passive: true });
     $('#fab').addEventListener('click', () => { resetExpenseForm(); goTo('expenses'); $('#catTiles .cat-tile[aria-pressed="true"]').focus(); });
     renderCategoryOptions();
     renderRates();
@@ -2044,8 +2213,9 @@
         setStatus('All data deleted.');
       });
     });
-    const hasData = state.expenses.length > 0 || Object.keys(state.years).length > 0;
-    let tab = hasData ? 'dashboard' : 'guide';
+    const fresh = state.expenses.length === 0 && Object.keys(state.years).length === 0;
+    if (fresh) state.selectedYear = new Date().getFullYear() - 1;
+    let tab = 'dashboard';
     try { tab = sessionStorage.getItem('taxback.tab') || tab; } catch (e) { /* ignore */ }
     showTab(tab);
     resetExpenseForm();
