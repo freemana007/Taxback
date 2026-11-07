@@ -25,6 +25,29 @@ and each receipt you add shows what it saves you.
 - **Help on every field**: "Where do I find this?" boxes say exactly where each
   number is (myAccount page, payslip line, bank statement), with calculators
   for a full year's pay, days worked from home and a year of rent.
+- **Review tab**: enter your Tax Credit Certificate (credits, 20% band and
+  basis for each job) and the app checks it against what you're entitled to,
+  suggests how a couple should split credits and band, warns about emergency
+  tax or Week 1 basis with an estimate of the overpayment and how to fix it,
+  checks every payslip against the cumulative PAYE calculation, compares
+  joint and separate assessment, and compares Revenue's Statement of
+  Liability (typed in or read from the PDF) with the app's figures.
+- **Your situation credits**: Single Person Child Carer Credit (with its extra
+  €4,000 band), widowed person's and widowed parent credits, age credit and
+  the 65+ exemption with marginal relief, blind person's, incapacitated
+  child and dependent relative credits.
+- **Planning**: "ways to pay less" on the Overview, including how much more
+  pension (AVC/PRSA) would save 40%, credits you said yes to but haven't
+  added, and claiming the rent credit during the year.
+- **Claiming**: a "your numbers for myAccount" sheet with copy buttons, life
+  event guides (marriage, baby, buying a home, new job, illness, redundancy,
+  retiring, moving abroad, separation), work benefits explained, and
+  calendar reminders (Google Calendar and Outlook links).
+- **Receipt photos**: attach a photo to each receipt; photos are shrunk and
+  kept in the browser (IndexedDB) on the device that took them.
+- **Sync**: on the hosted page, your data is saved privately to your account
+  and kept in step across devices (last change wins). Locally it stays in
+  the browser.
 - **Pay and tax that match**: for a year that isn't over, a calculator turns
   your latest payslip's "to date" figures into full-year pay **and** tax
   together, and the Overview warns if the year is still running. Taxable
@@ -103,7 +126,7 @@ for the hosted link.
 ## Tests
 
 ```
-npm test          # calculator and payslip parser (50 checks, hand-worked figures)
+npm test          # calculator and PDF readers (61 checks, hand-worked figures)
 npm run test:e2e  # whole app in a real browser (needs Playwright + Chromium)
 ```
 

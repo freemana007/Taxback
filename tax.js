@@ -20,31 +20,38 @@
   // Per-year figures. 2027 is included for planning only.
   const RATES = {
     2022: {
+      spccc: 1650, blind: 1650, blindBoth: 3300, incapChild: 3300, depRelative: 245,
       personalSingle: 1700, personalMarried: 3400, employee: 1700,
       bandSingle: 36800, bandMarriedOneEarner: 45800, bandSecondEarnerMax: 27800,
       rentCreditSingle: 500, rentCreditCouple: 1000,
       homeCarer: 1600, mortgageInterestMax: 0,
     },
     2023: {
+      spccc: 1750, blind: 1650, blindBoth: 3300, incapChild: 3300, depRelative: 245,
+      verifyFields: ['incapChild', 'blind'],
       personalSingle: 1775, personalMarried: 3550, employee: 1775,
       bandSingle: 40000, bandMarriedOneEarner: 49000, bandSecondEarnerMax: 31000,
       rentCreditSingle: 750, rentCreditCouple: 1500,
       homeCarer: 1700, mortgageInterestMax: 1250,
     },
     2024: {
+      spccc: 1750, blind: 1950, blindBoth: 3900, incapChild: 3500, depRelative: 245,
+      verifyFields: ['incapChild', 'blind'],
       personalSingle: 1875, personalMarried: 3750, employee: 1875,
       bandSingle: 42000, bandMarriedOneEarner: 51000, bandSecondEarnerMax: 33000,
       rentCreditSingle: 1000, rentCreditCouple: 2000,
       homeCarer: 1800, mortgageInterestMax: 1250,
     },
     2025: {
+      spccc: 1900, blind: 1950, blindBoth: 3900, incapChild: 3800, depRelative: 305,
       personalSingle: 2000, personalMarried: 4000, employee: 2000,
       bandSingle: 44000, bandMarriedOneEarner: 53000, bandSecondEarnerMax: 35000,
       rentCreditSingle: 1000, rentCreditCouple: 2000,
       homeCarer: 1950, mortgageInterestMax: 625,
-      verifyFields: ['mortgageInterestMax'],
+      verifyFields: ['mortgageInterestMax', 'blind'],
     },
     2026: {
+      spccc: 1900, blind: 1950, blindBoth: 3900, incapChild: 3800, depRelative: 305,
       personalSingle: 2000, personalMarried: 4000, employee: 2000,
       bandSingle: 44000, bandMarriedOneEarner: 53000, bandSecondEarnerMax: 35000,
       rentCreditSingle: 1000, rentCreditCouple: 2000,
@@ -52,6 +59,7 @@
       verify: true,
     },
     2027: {
+      spccc: 1900, blind: 1950, blindBoth: 3900, incapChild: 3800, depRelative: 305,
       personalSingle: 2125, personalMarried: 4250, employee: 2125,
       bandSingle: 44000, bandMarriedOneEarner: 53000, bandSecondEarnerMax: 35000,
       rentCreditSingle: 1150, rentCreditCouple: 2300,
@@ -61,6 +69,17 @@
   };
 
   const YEARS = Object.keys(RATES).map(Number);
+
+  // Credits that have not changed across the years covered.
+  const AGE_CREDIT_SINGLE = 245;
+  const AGE_CREDIT_MARRIED = 490;
+  const WIDOWED_EXTRA = 540; // widowed, no dependent children: single credit + 540
+  const WIDOWED_PARENT = [3600, 3150, 2700, 2250, 1800]; // years 1-5 after bereavement
+  const SPCCC_BAND = 4000; // extra 20% band for the Single Person Child Carer Credit
+  const AGE_EXEMPT_SINGLE = 18000;
+  const AGE_EXEMPT_MARRIED = 36000;
+  const AGE_EXEMPT_CHILD = [575, 575]; // first two children; 830 for each after
+  const AGE_EXEMPT_CHILD_MORE = 830;
 
   // USC: bands are [upper limit, rate]. Nobody pays USC if their income for
   // USC is €13,000 or less. Medical card holders and people aged 70+ with
@@ -213,6 +232,8 @@
     const year = Number(input.year);
     const r = ratesFor(year);
     const married = input.status === 'married';
+    const widowed = input.status === 'widowed';
+    const sit = input.situation || {};
     const people = input.people || {};
     const settings = input.settings || {};
     const exclude = input.exclude;
@@ -287,13 +308,22 @@
 
     // ---- Rate band ----
     // Married: the one-earner band, increased by the lower earner's income up to a maximum.
-    const bandBase = married ? r.bandMarriedOneEarner : r.bandSingle;
+    // Single Person Child Carer Credit: single or widowed, with a child living with you.
+    const spccc = !married && !!sit.singleParent && !skip('singleParent');
+    const bandBase = married ? r.bandMarriedOneEarner : r.bandSingle + (spccc ? SPCCC_BAND : 0);
     const bandIncrease = married ? Math.min(Math.min(income.you, income.spouse), r.bandSecondEarnerMax) : 0;
     const taxOn = (b) => Math.min(taxable, b) * STANDARD_RATE + Math.max(0, taxable - b) * HIGHER_RATE;
 
     // ---- Credits ----
     const credits = {};
-    credits.personal = married ? r.personalMarried : r.personalSingle;
+    const bereaved = widowed ? Number(sit.bereavementYear) || 0 : 0;
+    if (married || (widowed && bereaved === year)) {
+      credits.personal = r.personalMarried; // in the year of bereavement the married credit still applies
+    } else if (widowed && !sit.singleParent && bereaved && bereaved < year) {
+      credits.personal = r.personalSingle + WIDOWED_EXTRA;
+    } else {
+      credits.personal = r.personalSingle;
+    }
     // Employee credit per earner, limited to 20% of that person's PAYE income.
     credits.employee = sum(who.map((p) => Math.min(r.employee, gross[p] * STANDARD_RATE)));
 
@@ -338,6 +368,19 @@
     }
     if (skip('homeCarer')) homeCarer = 0;
 
+    // ---- Credits that depend on your circumstances ----
+    const ages = who.map((p) => ageAtYearEnd(people[p] && people[p].dob, year));
+    const over65 = ages.some((a) => a != null && a >= 65);
+    credits.ageCredit = skip('ageCredit') || !over65 ? 0 : (married ? AGE_CREDIT_MARRIED : AGE_CREDIT_SINGLE);
+    credits.singleParent = spccc ? r.spccc : 0;
+    const yearsSince = widowed && bereaved ? year - bereaved : 0;
+    credits.widowedParent = skip('widowedParent') || !(widowed && sit.singleParent && yearsSince >= 1 && yearsSince <= 5)
+      ? 0 : WIDOWED_PARENT[yearsSince - 1];
+    const blindCount = who.filter((p) => sit.blind && sit.blind[p]).length;
+    credits.blind = skip('blind') || !blindCount ? 0 : (blindCount === 2 ? r.blindBoth : r.blind);
+    credits.incapChild = skip('incapChild') ? 0 : Math.max(0, Math.floor(num(sit.incapChildren))) * r.incapChild;
+    credits.depRelative = skip('depRelative') ? 0 : Math.max(0, Math.floor(num(sit.depRelatives))) * r.depRelative;
+
     // Revenue gives either the Home Carer Credit or the increased rate band,
     // whichever is better for the couple, never both.
     const otherCredits = sum(Object.values(credits));
@@ -350,7 +393,19 @@
     const marginalRate = taxable > band ? HIGHER_RATE : STANDARD_RATE;
 
     const totalCredits = sum(Object.values(credits));
-    const liability = Math.max(0, grossTax - totalCredits);
+    let liability = Math.max(0, grossTax - totalCredits);
+
+    // Age exemption (65+): no income tax on income up to the limit, and above it
+    // tax is capped at 40% of the excess ("marginal relief"), if that's lower.
+    let ageExemption = null;
+    if (over65) {
+      const kids = Math.max(0, Math.floor(num(sit.children)));
+      let limit = married ? AGE_EXEMPT_MARRIED : AGE_EXEMPT_SINGLE;
+      for (let k = 0; k < kids; k++) limit += AGE_EXEMPT_CHILD[k] || AGE_EXEMPT_CHILD_MORE;
+      const capped = Math.max(0, totalGross - limit) * HIGHER_RATE;
+      ageExemption = { limit, capped: round2(capped), applied: capped < liability };
+      if (capped < liability) liability = capped;
+    }
     const taxPaid = sum(who.map((p) => num(people[p] && people[p].taxPaid)));
     const hasTaxPaid = who.some((p) => people[p] && people[p].taxPaid !== '' && people[p].taxPaid != null);
 
@@ -366,6 +421,7 @@
       credits: mapRound(credits),
       totalCredits: round2(totalCredits),
       liability: round2(liability),
+      ageExemption,
       taxPaid: round2(taxPaid),
       hasTaxPaid,
       refund: round2(taxPaid - liability),
@@ -387,7 +443,126 @@
     return out;
   }
 
-  const CLAIM_KEYS = Object.keys(CATEGORIES).concat(['homeCarer']);
+  const CLAIM_KEYS = Object.keys(CATEGORIES).concat(['homeCarer', 'ageCredit', 'singleParent', 'widowedParent', 'blind', 'incapChild', 'depRelative']);
+
+  /**
+   * Joint versus separate assessment for a married couple. Under separate
+   * assessment each person is taxed like a single person on their own
+   * income, with their own receipts (unassigned receipts count as yours),
+   * and no home carer credit or shared band.
+   */
+  function compareAssessment(input) {
+    const joint = computeYear(input).liability;
+    if (input.status !== 'married') return { joint, separate: null, difference: 0 };
+    let separate = 0;
+    ['you', 'spouse'].forEach((p) => {
+      const sit = input.situation || {};
+      separate += computeYear({
+        year: input.year, status: 'single',
+        people: { you: (input.people || {})[p] || {} },
+        settings: Object.assign({}, input.settings, { homeCarer: false }),
+        situation: { blind: { you: !!(sit.blind && sit.blind[p]) },
+          incapChildren: p === 'you' ? sit.incapChildren : 0, depRelatives: p === 'you' ? sit.depRelatives : 0 },
+        expenses: (input.expenses || []).filter((e) => (e.person || 'you') === p).map((e) => Object.assign({}, e, { person: 'you' })),
+      }).liability;
+    });
+    return { joint: round2(joint), separate: round2(separate), difference: round2(separate - joint) };
+  }
+
+  /**
+   * The credits and 20% band a person (or couple) should see on their Tax
+   * Credit Certificate: the standard ones that don't depend on receipts.
+   */
+  function entitlement(input) {
+    const r = computeYear(Object.assign({}, input, { expenses: [] }));
+    const c = r.credits;
+    const credits = c.personal + c.employee + c.ageCredit + c.singleParent + c.widowedParent + c.blind + c.incapChild + c.depRelative + c.homeCarer;
+    return { credits: round2(credits), band: r.band, detail: c };
+  }
+
+  /**
+   * Income tax a payroll should deduct each month on the cumulative basis.
+   * grossByMonth: 12 numbers (0 or blank for months not paid).
+   * Returns the expected tax for each month.
+   */
+  function cumulativePaye(grossByMonth, annualCredits, annualBand) {
+    let paidSoFar = 0;
+    let grossSoFar = 0;
+    return grossByMonth.map((g, i) => {
+      grossSoFar += num(g);
+      const band = (annualBand / 12) * (i + 1);
+      const credits = (annualCredits / 12) * (i + 1);
+      const due = round2(Math.max(0, Math.min(grossSoFar, band) * STANDARD_RATE + Math.max(0, grossSoFar - band) * HIGHER_RATE - credits));
+      // Payroll refunds within the year too, so a month can be negative.
+      const thisMonth = round2(due - paidSoFar);
+      paidSoFar = due;
+      return thisMonth;
+    });
+  }
+
+  /** Month 1 (Week 1) basis: each month taxed on its own, no catching up. */
+  function month1Paye(gross, annualCredits, annualBand) {
+    const band = annualBand / 12;
+    return round2(Math.max(0, Math.min(gross, band) * STANDARD_RATE + Math.max(0, gross - band) * HIGHER_RATE - annualCredits / 12));
+  }
+
+  /**
+   * Emergency tax for a month: no credits. With a PPS number, the first
+   * month gets 1/12 of the single band at 20%; after that everything is 40%.
+   * Without a PPS number, 40% from the start.
+   */
+  function emergencyPaye(year, gross, monthNumber, hasPps) {
+    const band = monthNumber === 1 && hasPps ? ratesFor(year).bandSingle / 12 : 0;
+    return round2(Math.min(gross, band) * STANDARD_RATE + Math.max(0, gross - band) * HIGHER_RATE);
+  }
+
+  /**
+   * A sensible way for a married couple to split their credits and 20% band
+   * between them so neither overpays during the year. The higher earner
+   * takes the shared band (up to their income) and the shareable credits
+   * (up to what their tax can use); the lower earner keeps the band
+   * increase that only they can use, plus whatever is left over.
+   */
+  function suggestSplit(input) {
+    const year = Number(input.year);
+    const r = ratesFor(year);
+    const people = input.people || {};
+    const inc = (p) => num(people[p] && people[p].gross) + num(people[p] && people[p].welfare);
+    const ent = entitlement(input);
+    const hi = inc('you') >= inc('spouse') ? 'you' : 'spouse';
+    const lo = hi === 'you' ? 'spouse' : 'you';
+    const shared = r.bandMarriedOneEarner;
+    const increase = ent.band - shared;
+    const bandHi = Math.min(shared, inc(hi));
+    const bandLo = shared - bandHi + increase;
+    const emp = (p) => Math.min(r.employee, num(people[p] && people[p].gross) * STANDARD_RATE);
+    const shareable = Math.max(0, ent.credits - emp('you') - emp('spouse'));
+    const taxHi = Math.min(inc(hi), bandHi) * STANDARD_RATE + Math.max(0, inc(hi) - bandHi) * HIGHER_RATE;
+    const toHi = Math.min(shareable, Math.max(0, taxHi - emp(hi)));
+    const out = {};
+    out[hi] = { credits: round2(emp(hi) + toHi), band: round2(bandHi) };
+    out[lo] = { credits: round2(emp(lo) + shareable - toHi), band: round2(bandLo) };
+    return out;
+  }
+
+  /**
+   * How much more pension (AVC) is worth paying for a year: the room left
+   * under the age limit, and the part of it that saves 40%.
+   */
+  function avcPlan(input) {
+    const r = computeYear(input);
+    const people = input.people || {};
+    const who = input.status === 'married' ? ['you', 'spouse'] : ['you'];
+    const room = {};
+    who.forEach((p) => {
+      const d = r.detail.pension[p] || { limit: 0, paid: 0 };
+      room[p] = round2(Math.max(0, d.limit - d.paid - num(people[p] && people[p].pensionFromWages)));
+    });
+    const totalRoom = sum(Object.values(room));
+    const above = Math.max(0, r.taxable - r.band);
+    const at40 = Math.min(totalRoom, above);
+    return { room, totalRoom: round2(totalRoom), at40: round2(at40), saving: round2(at40 * HIGHER_RATE), marginalRate: r.marginalRate };
+  }
 
   /**
    * How much tax each claim saves for a year: liability without it minus
@@ -409,5 +584,6 @@
     STANDARD_RATE, HIGHER_RATE,
     ratesFor, daysInYear, ageAtYearEnd, pensionPercent, pensionLimit,
     claimDeadline, daysUntil, openYears, computeYear, claimValues,
+    compareAssessment, entitlement, suggestSplit, cumulativePaye, month1Paye, emergencyPaye, avcPlan,
   };
 });

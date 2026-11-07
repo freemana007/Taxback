@@ -12,12 +12,53 @@
 
   // Help shown under each field in "Income & settings".
   const FIELDS = {
+    singleParent: {
+      title: 'Who counts for the Single Person Child Carer Credit?',
+      body: [
+        'You’re not married or living with a partner, and a child lives with you for most of the year (more than half). The child must be under 18, or in full-time education, or permanently incapacitated.',
+        'It gives you an extra tax credit **and** an extra €4,000 taxed at 20%. If the child lives with both parents, the main carer gets it but can hand it to the other parent.',
+        'Claim it in myAccount: PAYE Services → Manage your tax → Claim tax credits → You and your family.',
+      ],
+    },
+    bereavementYear: {
+      title: 'Why does the year matter?',
+      body: [
+        'In the year your spouse or civil partner died you keep the married person’s credit. After that you get a higher widowed person’s credit.',
+        'If you have a dependent child, you instead get the Single Person Child Carer Credit and a Widowed Parent Credit for the 5 years after the year of bereavement (€3,600 in year 1, falling to €1,800 in year 5).',
+      ],
+    },
+    children: {
+      title: 'Why ask about children?',
+      body: ['If you or your spouse are 65 or over, each child raises the income you can have before paying any income tax (€575 for each of the first two, €830 for each after).'],
+    },
+    blindYou: {
+      title: 'Who gets the Blind Person’s Tax Credit?',
+      body: [
+        'You’re registered blind, or your sight is severely limited (central vision of 6/60 or less in the better eye with glasses, or a narrow field of vision).',
+        'Claim it in myAccount with a report from an ophthalmologist or a letter from Vision Ireland (formerly NCBI). It’s higher if you’re both blind.',
+      ],
+    },
+    incapChildren: {
+      title: 'What is the Incapacitated Child Tax Credit?',
+      body: [
+        'For a child who is permanently incapacitated, physically or mentally, and can’t look after themselves as an adult. The child can be any age if the incapacity began before 21 (or during full-time education).',
+        'A doctor fills in a form (Form ICC1). Claim it in myAccount.',
+      ],
+    },
+    depRelatives: {
+      title: 'What is the Dependent Relative Tax Credit?',
+      body: [
+        'For a relative you support who can’t look after themselves because of age or illness, or a widowed parent of you or your spouse, whatever their health. Their own income must be low (under a yearly limit Revenue sets, roughly the full State Pension).',
+        'It’s a small credit, but it can be backdated 4 years.',
+      ],
+    },
     status: {
       title: 'Which one am I?',
       body: [
         'Pick **Single** if you are not married or in a civil partnership, or if you and your partner are taxed separately.',
         'Pick **Married / civil partners, jointly assessed** if you are married or in a civil partnership and taxed together. This is the usual setup, and it lets you share tax credits.',
         'Not sure? Look at your **Tax Credit Certificate** in myAccount (PAYE Services → View tax credit certificate). If it says “Married Person or Civil Partner Tax Credit”, you are jointly assessed.',
+        'Pick **Widowed** if your spouse or civil partner has died and you haven’t remarried.',
       ],
     },
     youDob: {
@@ -211,6 +252,94 @@
   };
 
   // Questions to help people find what they can claim.
+  // Short guides for changes that affect your tax.
+  const LIFE_EVENTS = [
+    {
+      title: 'Getting married',
+      text: [
+        'In the year you marry, you’re each taxed as single. Afterwards you can claim back any extra you’d have saved by being taxed together: one of you applies after the year ends (myAccount → Review your tax → the year → Income Tax Return, and tick the box for the year of marriage).',
+        'Tell Revenue you’ve married (myAccount → Manage your tax → Your marital status) so your credits and band can be shared from the next year.',
+      ],
+    },
+    {
+      title: 'Having a baby',
+      text: [
+        'There’s no tax credit for children in a two-parent family, but Maternity and Paternity Benefit are taxed. Revenue usually reduces your credits while you get it, so expect a smaller pay packet when you return.',
+        'Health expenses for pregnancy and birth (consultant, scans, hospital charges you pay) count for 20% back.',
+        'Single parents: claim the Single Person Child Carer Credit.',
+      ],
+    },
+    {
+      title: 'Buying a home',
+      text: [
+        'First-time buyers of a newly built home may get **Help to Buy**: a refund of income tax you paid over the last 4 years, up to a maximum (€30,000 for many years, with higher limits announced since; check revenue.ie). Apply in myAccount before you sign the contract.',
+        'Once you own, the Rent Tax Credit stops. Mortgage interest relief only covered certain years, so check if it applies to you.',
+      ],
+    },
+    {
+      title: 'Starting a second job or changing jobs',
+      text: [
+        'Tell Revenue about the new job before your first payday (myAccount → Manage your tax → Jobs and pensions → Add job). Otherwise you’re put on **emergency tax**.',
+        'With two jobs, your credits and 20% band are split between them. Put most on the main job; the Review tab shows how.',
+      ],
+    },
+    {
+      title: 'Illness, Illness Benefit or time off',
+      text: [
+        'Illness Benefit is taxable after the first 6 weeks, but it’s paid without tax taken. Revenue reduces your credits on your wages to collect it, so you might see less in your pay.',
+        'If the year ends with tax owed, Revenue usually collects it by reducing your credits over up to 4 years. You can ask to pay it at once instead.',
+      ],
+    },
+    {
+      title: 'Redundancy',
+      text: [
+        'Statutory redundancy is tax-free. On extra lump-sum payments, a basic exemption of €10,160 plus €765 for each full year of service is tax-free, and there are higher limits in some cases. Ask your employer for the calculation.',
+        'If you’re out of work for part of the year, you’ve likely overpaid tax. Claim it back after the year ends, or during the year after 4 weeks (Form P50 through myAccount).',
+      ],
+    },
+    {
+      title: 'Retiring',
+      text: [
+        'At 65 you get the age credit (€245, or €490 for a couple), and if your income is low you may pay no income tax at all. At 66 you stop paying PRSI. With a medical card or at 70+, USC is at most 2%.',
+        'A pension lump sum up to €200,000 is tax-free over your lifetime. The State Pension is taxable but paid without tax taken, so Revenue adjusts your other credits.',
+      ],
+    },
+    {
+      title: 'Moving abroad or coming back',
+      text: [
+        'In the year you arrive or leave, you may be able to treat your Irish and foreign earnings separately (split-year residence). Ask Revenue to apply it.',
+        'Tell Revenue about the new or ended job so your credits are set correctly, and claim back overpaid tax for the part of the year you weren’t working here.',
+      ],
+    },
+    {
+      title: 'Separation or divorce',
+      text: [
+        'You can choose how you’re taxed after separation. Maintenance you pay to a former spouse can be deducted from your income if it’s legally enforceable; maintenance for children isn’t.',
+        'If a child lives with you, you may get the Single Person Child Carer Credit.',
+      ],
+    },
+  ];
+
+  // Benefits from work: are they taxed?
+  const BENEFITS = [
+    ['Small benefit vouchers', 'Tax-free up to €1,500 a year, in no more than 5 vouchers or gifts (€1,000 and 2 vouchers in 2023; €1,000 and 1 voucher in 2022). Cash never counts.'],
+    ['Cycle to Work', 'Tax-free bike up to €1,250 (€1,500 for an e-bike, €3,000 for a cargo bike) through salary sacrifice, once every 4 years.'],
+    ['TaxSaver travel pass', 'Tax-free yearly bus, train or Luas ticket, usually paid from your gross pay so it saves tax, USC and PRSI.'],
+    ['Remote working allowance', 'Your employer can pay up to €3.20 a day tax-free. If they do, check with Revenue before also claiming remote working relief.'],
+    ['Health insurance from your employer', 'Taxed as a benefit through your pay, but you can claim 20% relief on it. Add it under Receipts.'],
+    ['Company car or van', 'Taxed as a benefit based on the car’s value, mileage and emissions. It’s already in your gross pay on your Employment Detail Summary.'],
+    ['Pension contributions from your employer', 'Not taxed as a benefit. Your own contributions through payroll already get tax relief.'],
+    ['Share schemes and RSUs', 'Usually taxed through payroll when the shares are given to you. Selling them later can mean Capital Gains Tax, which is outside this app.'],
+  ];
+
+  // Dates worth a reminder in your calendar. month is 1-12.
+  const REMINDERS = [
+    { title: 'Claim back last year’s tax', month: 1, day: 20, detail: 'Review last year in myAccount and claim health expenses, rent, remote working and other credits. Taxback has the figures.' },
+    { title: 'Check your Tax Credit Certificate', month: 1, day: 10, detail: 'Check the new year’s credits and rate band are right for every job (Taxback → Review).' },
+    { title: 'Last day for AVCs to count for last year', month: 10, day: 31, detail: 'Extra pension contributions paid by today can be set against last year’s income.' },
+    { title: 'Last day to claim for the oldest open year', month: 12, day: 15, detail: 'Claims close on 31 December for the year four years ago. Claim before then.' },
+  ];
+
   const QUIZ = [
     ['health', 'Did you pay for a doctor, consultant, prescriptions, physio or special dental work?'],
     ['rent', 'Do you rent the home you live in?'],
@@ -308,8 +437,12 @@
     ['ROS', 'Revenue Online Service: Revenue’s website for people who file a Form 11 tax return, such as the self-employed.'],
     ['Form 11', 'The yearly tax return for self-employed people, landlords and others with income outside a job.'],
     ['Payslip', 'The statement you get each payday. It shows your pay, the tax taken, and totals for the year so far (“to date” or “YTD”).'],
+    ['Tax Credit Certificate', 'Revenue’s statement of the credits and 20% band you get each year, split between your jobs. Your employer uses it to work out your tax.'],
+    ['Emergency tax', 'What your employer must deduct if Revenue hasn’t told them your credits: no credits, and mostly 40%. You get it back once the job is registered.'],
+    ['Cumulative basis', 'The normal way: each payday your tax is worked out on your pay for the year so far, so unused credits carry forward and overpayments are repaid.'],
+    ['Week 1 / Month 1 basis', 'Each payday is taxed on its own, with no catching up. Common for a short time after starting a job.'],
     ['PPS number', 'Your personal public service number. It is on your payslip and Tax Credit Certificate.'],
   ];
 
-  return { FIELDS, CATEGORIES, QUIZ, CLAIM_STEPS, ROUTES, ROS_STEPS, RECEIPTS_APP, GLOSSARY, MYACCOUNT };
+  return { FIELDS, CATEGORIES, QUIZ, CLAIM_STEPS, ROUTES, ROS_STEPS, RECEIPTS_APP, GLOSSARY, MYACCOUNT, LIFE_EVENTS, BENEFITS, REMINDERS };
 });

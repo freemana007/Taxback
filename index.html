@@ -32,6 +32,7 @@
     <button role="tab" data-tab="dashboard" data-icon="chart"><span class="tab-label">Overview</span></button>
     <button role="tab" data-tab="expenses" data-icon="receipt"><span class="tab-label">Receipts</span></button>
     <button role="tab" data-tab="profile" data-icon="wallet"><span class="tab-label">Income</span></button>
+    <button role="tab" data-tab="review" data-icon="search"><span class="tab-label">Review</span></button>
     <button role="tab" data-tab="checklist" data-icon="check"><span class="tab-label">Checklist</span></button>
     <button role="tab" data-tab="data" data-icon="shield"><span class="tab-label">Backup</span></button>
   </nav>
@@ -57,8 +58,19 @@
         <p class="muted small">Revenue has two websites for claiming. Pick the one that fits you.</p>
         <div class="seg-group" role="group" aria-label="How you file" id="routePick"></div>
         <p class="route-who" id="routeWho"></p>
+        <div class="sheet" id="claimSheet"></div>
         <ol class="claim-steps" id="claimSteps"></ol>
         <p class="muted small" id="receiptsApp"></p>
+      </div>
+      <div class="card">
+        <h2>When life changes</h2>
+        <p class="muted small">How common changes affect your tax, and what to do.</p>
+        <div class="accordion" id="lifeEvents"></div>
+      </div>
+      <div class="card">
+        <h2>Reminders</h2>
+        <p class="muted small">Add the dates that matter to your calendar.</p>
+        <ul class="reminders" id="reminders"></ul>
       </div>
       <div class="card">
         <h2>Words you'll see</h2>
@@ -93,6 +105,10 @@
         <p class="muted small">Everything taken from your pay for the year. Tax claims only reduce income tax; USC and PRSI don't change.</p>
         <div class="scroll"><table class="tbl" id="chargesTable"></table></div>
         <p class="muted small" id="chargesNote"></p>
+      </div>
+      <div class="card" id="saveCard">
+        <h2>Ways to pay less</h2>
+        <div id="saveTips"></div>
       </div>
       <div class="card">
         <h2>All open years</h2>
@@ -145,6 +161,11 @@
           </label>
           <p class="notice wide" id="medSelfNotice" hidden>You pay this yourself, so your insurer already took 20% off the price. There is nothing more to claim, and you don't need to add it.</p>
           <div class="calc wide rent-only" id="rentCalc" hidden></div>
+          <div class="wide photo-row">
+            <label class="button" for="photoInput">Add a photo of the receipt</label>
+            <input id="photoInput" type="file" accept="image/*" capture="environment" hidden>
+            <span class="photo-preview" id="photoPreview"></span>
+          </div>
           <div class="cat-guide wide" id="catGuide"></div>
           <div class="wide actions">
             <button type="submit" class="primary" id="expSubmit">Add receipt</button>
@@ -172,6 +193,7 @@
             <select name="status">
               <option value="single">Single</option>
               <option value="married">Married / civil partners, jointly assessed</option>
+              <option value="widowed">Widowed / surviving civil partner</option>
             </select>
           </label>
           <label>Your date of birth
@@ -180,7 +202,29 @@
           <label class="spouse-only">Spouse's date of birth
             <input name="spouseDob" type="date">
           </label>
-          
+          <label class="widowed-only">Year your spouse or partner died
+            <input name="bereavementYear" type="number" min="1990" max="2030" step="1" inputmode="numeric">
+          </label>
+          <h3 class="wide form-sub">Your situation</h3>
+          <p class="hint wide">These can each be worth a tax credit. Tick or fill in whatever applies.</p>
+          <label class="check not-married-only">
+            <input name="singleParent" type="checkbox"> A child lives with me for most of the year
+          </label>
+          <label>Number of dependent children
+            <input name="children" type="number" min="0" max="20" step="1" inputmode="numeric">
+          </label>
+          <label class="check">
+            <input name="blindYou" type="checkbox"> I’m blind or severely visually impaired
+          </label>
+          <label class="check spouse-only">
+            <input name="blindSpouse" type="checkbox"> My spouse is blind or severely visually impaired
+          </label>
+          <label>Children with a permanent incapacity
+            <input name="incapChildren" type="number" min="0" max="10" step="1" inputmode="numeric">
+          </label>
+          <label>Dependent relatives I support
+            <input name="depRelatives" type="number" min="0" max="10" step="1" inputmode="numeric">
+          </label>
         </form>
       </div>
       <div class="card">
@@ -282,13 +326,68 @@
     <!-- CHECKLIST -->
     <section id="tab-checklist" class="tab" hidden>
       <div id="checklist"></div>
+      <div class="card">
+        <h2>Benefits from work: are they taxed?</h2>
+        <dl class="glossary" id="benefits"></dl>
+      </div>
+    </section>
+
+    <!-- REVIEW -->
+    <section id="tab-review" class="tab" hidden>
+      <div class="card intro">
+        <h2>Is your tax right this year?</h2>
+        <p>Check the credits Revenue gave your employer, spot emergency tax, and test each payslip. Most people who overpay find the cause here.</p>
+        <p class="muted small">Reviewing tax year <strong class="yr"></strong>.</p>
+      </div>
+      <div class="card" id="tccCard">
+        <div class="row-between">
+          <h2>Tax Credit Certificate</h2>
+          <div class="seg-group person-tabs" id="tccPerson" role="group" aria-label="Whose certificate"></div>
+        </div>
+        <p class="muted small">In myAccount: PAYE Services → <strong>View tax credit certificate</strong> → pick the year. For each job, copy the yearly <strong>tax credits</strong>, the yearly <strong>rate band</strong> (also called the cut-off point) and the <strong>basis</strong>.</p>
+        <div id="tccJobs"></div>
+        <div class="actions"><button type="button" id="addJob">Add a job</button></div>
+        <div id="tccResult"></div>
+      </div>
+      <div class="card" id="emergencyCard" hidden></div>
+      <div class="card">
+        <h2>Payslip check</h2>
+        <p class="muted small">Works out the income tax each payslip should take, using your certificate, and compares it with what was taken. Needs your pay entered month by month under Income.</p>
+        <div id="payslipCheck"></div>
+      </div>
+      <div class="card" id="assessCard" hidden>
+        <h2>Taxed together or separately?</h2>
+        <div id="assessResult"></div>
+      </div>
+      <div class="card">
+        <h2>Check Revenue’s Statement of Liability</h2>
+        <p class="muted small">After you claim, Revenue sends a Statement of Liability. Enter its figures (or read the PDF) to compare with this app.</p>
+        <div class="actions">
+          <label class="button" for="solFile">Read Statement PDF</label>
+          <input id="solFile" type="file" accept="application/pdf,.pdf" hidden>
+        </div>
+        <form id="solForm" class="form">
+          <label>Total income (€)<input name="solIncome" type="number" step="0.01" min="0" inputmode="decimal"></label>
+          <label>Total tax credits (€)<input name="solCredits" type="number" step="0.01" min="0" inputmode="decimal"></label>
+          <label>Tax liability after credits (€)<input name="solLiability" type="number" step="0.01" min="0" inputmode="decimal"></label>
+          <label>Tax paid (€)<input name="solPaid" type="number" step="0.01" min="0" inputmode="decimal"></label>
+        </form>
+        <div id="solResult"></div>
+      </div>
     </section>
 
     <!-- DATA -->
     <section id="tab-data" class="tab" hidden>
       <div class="card">
         <h2>Your data</h2>
-        <p class="muted">Everything is stored only in this browser. Nothing is uploaded. Export a backup now and then, especially before clearing your browser.</p>
+        <div class="sync-box" id="syncBox">
+          <div>
+            <strong id="syncTitle">Sync across your devices</strong>
+            <p class="muted small" id="syncText">Checking…</p>
+          </div>
+          <label class="switch"><input type="checkbox" id="syncToggle"> <span>Sync</span></label>
+        </div>
+        <p class="muted small">Receipt photos stay on the device you took them on. Copy a backup now and then, especially before clearing your browser.</p>
         <div class="actions">
           <button type="button" id="exportBtn" class="primary">Show backup</button>
           <button type="button" id="exportCsvBtn">Show receipts as CSV</button>

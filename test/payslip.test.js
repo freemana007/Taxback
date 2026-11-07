@@ -80,3 +80,22 @@ test('USC and PRSI are found, employer PRSI ignored', () => {
   assert.equal(r.prsiYTD, 492);
   assert.equal(r.taxPeriod, 512.4);
 });
+
+test('emergency and week 1 basis are spotted', () => {
+  assert.equal(P.parseText(['Tax Basis: Emergency', 'PAYE 800.00']).basis, 'emergency');
+  assert.equal(P.parseText(['Basis: Week 1', 'PAYE 80.00']).basis, 'week1');
+  assert.equal(P.parseText(['Tax Basis: M1']).basis, 'week1');
+  assert.equal(P.parseText(['Tax Basis: Cumulative', 'PAYE 512.40']).basis, null);
+});
+
+test('Statement of Liability figures', () => {
+  const r = P.parseStatement([
+    'Statement of Liability 2025',
+    'Total Income 52,300.00',
+    'Total Tax Credits 4,274.10',
+    'Tax Liability after credits 7,445.90',
+    'Tax Paid 8,120.00',
+    'You have overpaid €674.10',
+  ]);
+  assert.deepEqual([r.income, r.credits, r.liability, r.paid, r.overpaid], [52300, 4274.1, 7445.9, 8120, 674.1]);
+});

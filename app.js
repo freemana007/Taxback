@@ -11,7 +11,8 @@
 
   const CLAIM_LABELS = Object.assign(
     Object.fromEntries(Object.entries(Tax.CATEGORIES).map(([k, v]) => [k, v.label])),
-    { homeCarer: 'Home carer credit' });
+    { homeCarer: 'Home carer credit', ageCredit: 'Age credit (65+)', singleParent: 'Single Person Child Carer Credit',
+      widowedParent: 'Widowed Parent Credit', blind: 'Blind Person’s Credit', incapChild: 'Incapacitated Child Credit', depRelative: 'Dependent Relative Credit' });
 
   // ---------- State ----------
   function defaultState() {
@@ -37,9 +38,15 @@
   let state = load();
   let editingId = null;
 
-  function save() {
+  function persist() {
     try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
-    catch (e) { setStatus('This browser would not save your changes. Copy a backup from Rates & data to keep them.', true); }
+    catch (e) { setStatus('This browser would not save your changes. Copy a backup from the Backup tab to keep them.', true); }
+  }
+
+  function save() {
+    state.updatedAt = Date.now();
+    persist();
+    schedulePush();
   }
 
   function yearData(y) {
@@ -65,6 +72,14 @@
         carerIncome: yd.carerIncome,
       },
       expenses: state.expenses,
+      situation: {
+        singleParent: state.profile.status !== 'married' && !!state.profile.singleParent,
+        children: state.profile.children,
+        bereavementYear: state.profile.bereavementYear,
+        blind: { you: !!state.profile.blindYou, spouse: !!state.profile.blindSpouse },
+        incapChildren: state.profile.incapChildren,
+        depRelatives: state.profile.depRelatives,
+      },
     };
   }
 
@@ -75,6 +90,9 @@
       medicalCard: !!yd[p + 'MedicalCard'], dob: state.profile[p + 'Dob'],
     };
   }
+
+  const PROFILE_NUM = ['bereavementYear', 'children', 'incapChildren', 'depRelatives'];
+  const PROFILE_CHECK = ['singleParent', 'blindYou', 'blindSpouse'];
 
   const YEAR_NUMBER_FIELDS = ['youGross', 'youTaxPaid', 'youWelfare', 'youPensionWages', 'youUscPaid', 'youPrsiPaid',
     'spouseGross', 'spouseTaxPaid', 'spouseWelfare', 'spousePensionWages', 'spouseUscPaid', 'spousePrsiPaid',
@@ -91,6 +109,8 @@
     check: 'M5 12.5l4 4L19 7',
     shield: 'M12 3.5 5 6v5.5c0 4.2 2.9 7.7 7 9 4.1-1.3 7-4.8 7-9V6zM9 12l2 2 4-4',
     plus: 'M12 5v14M5 12h14',
+    search: 'M10.5 17a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13zM15.5 15.5 20 20',
+    camera: 'M4 8.5A1.5 1.5 0 0 1 5.5 7h2l1.5-2h6l1.5 2h2A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5zM12 16a3 3 0 1 0 0-6 3 3 0 0 0 0 6z',
     health: 'M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10zM12 9.5v5M9.5 12h5',
     medicalInsurance: 'M12 3.5 5 6v5.5c0 4.2 2.9 7.7 7 9 4.1-1.3 7-4.8 7-9V6zM12 9v6M9 12h6',
     rent: 'M4 11 12 4.5l8 6.5M6 9.5V20h12V9.5M10 20v-5h4v5',
@@ -371,6 +391,8 @@
     f.date.value = defaultDateFor(Number(state.selectedYear));
     $('#expSubmit').textContent = 'Add receipt';
     $('#expCancel').hidden = true;
+    pendingPhoto = null;
+    showPhotoPreview(null);
     updateAmountTotal();
     updateFormForCategory();
   }
@@ -403,6 +425,15 @@
       item.paidBy = f.paidBy.value || 'employer';
     }
     if (item.category === 'tuition') item.partTime = f.partTime.checked;
+    const old = editingId ? state.expenses.find((x) => x.id === editingId) : null;
+    if (pendingPhoto instanceof Blob) {
+      item.photo = true;
+      photoPut(item.id, pendingPhoto).catch(() => toast('This browser wouldn’t store the photo. The receipt is saved without it.'));
+    } else if (pendingPhoto === 'remove') {
+      photoDel(item.id);
+    } else if (old && old.photo) {
+      item.photo = true;
+    }
     const valueBefore = Tax.YEARS.includes(item.year) ? Tax.claimValues(inputFor(item.year)).total : 0;
     const wasEditing = !!editingId;
     if (editingId) {
@@ -444,6 +475,9 @@
     f.partTime.checked = !!item.partTime;
     f.paidBy.value = item.category === 'medicalInsurance' ? (item.paidBy || 'employer') : '';
     updateAmountTotal();
+    pendingPhoto = null;
+    showPhotoPreview(null, item.photo ? 'Loading photo…' : '');
+    if (item.photo) photoGet(item.id).then((b) => { if (editingId === item.id && !pendingPhoto) showPhotoPreview(b, b ? '' : 'Photo is on another device.'); });
     $('#expSubmit').textContent = 'Save changes';
     $('#expCancel').hidden = false;
     updateFormForCategory();
@@ -483,11 +517,12 @@
               e.category === 'tuition' ? (e.partTime ? 'Part-time' : 'Full-time') : '',
             ].filter(Boolean).join(' · ') }),
           ]),
-          el('span', { class: 'num', text: eur.format(e.amount) }),
+          el('span', { class: 'num' }, [e.photo ? el('button', { type: 'button', class: 'link photo-link', 'aria-label': 'View photo', title: 'View photo', onclick: () => openPhoto(e.id) }, [icon('camera', 18)]) : '', eur.format(e.amount)]),
           el('div', { class: 'item-actions' }, [
             el('button', { class: 'link', text: 'Edit', onclick: () => startEdit(e) }),
             el('button', { class: 'link danger', text: 'Delete', onclick: (ev) => armConfirm(ev.currentTarget, 'Confirm delete', () => {
               state.expenses = state.expenses.filter((x) => x.id !== e.id);
+              if (e.photo) photoDel(e.id);
               if (editingId === e.id) resetExpenseForm();
               save(); renderAll();
             }) }),
@@ -503,6 +538,10 @@
     pf.status.value = state.profile.status;
     pf.youDob.value = state.profile.youDob || '';
     pf.spouseDob.value = state.profile.spouseDob || '';
+    PROFILE_NUM.forEach((k) => { if (document.activeElement !== pf[k]) pf[k].value = state.profile[k] ?? ''; });
+    PROFILE_CHECK.forEach((k) => { pf[k].checked = !!state.profile[k]; });
+    $$('.widowed-only').forEach((n) => { n.hidden = state.profile.status !== 'widowed'; });
+    $$('.not-married-only').forEach((n) => { n.hidden = married(); });
     const y = Number(state.selectedYear);
     $$('.yr').forEach((n) => { n.textContent = y; });
     const yf = $('#yearForm');
@@ -740,6 +779,11 @@
     const ytd = (r.grossYTD || r.taxYTD)
       ? el('p', { class: 'muted small', text: `This payslip also shows year-to-date totals: pay ${r.grossYTD ? eur.format(r.grossYTD) : '—'}, tax ${r.taxYTD ? eur.format(r.taxYTD) : '—'}. On your last payslip of the year, these are your yearly totals.` })
       : '';
+    const basisNote = r.basis
+      ? el('p', { class: 'flag bad', text: r.basis === 'emergency'
+        ? 'This payslip says emergency tax. You’re probably overpaying: see the Review tab for how to fix it.'
+        : 'This payslip is on Week 1 / Month 1 basis, so unused credits aren’t carried forward. See the Review tab.' })
+      : '';
     const freq = r.frequency && r.frequency !== 'monthly'
       ? el('p', { class: 'muted small', text: `This looks like a ${r.frequency} payslip. Use “Add to month” for each one so the month adds them up.` }) : '';
     slipStatus([
@@ -753,7 +797,7 @@
         el('label', { for: 'slipUsc' }, ['USC this payslip (€)', usc]),
         el('label', { for: 'slipPrsi' }, ['PRSI this payslip (€)', prsi]),
       ]),
-      freq, ytd,
+      basisNote, freq, ytd,
       el('div', { class: 'actions' }, [
         el('button', { type: 'button', class: 'primary', text: 'Save to this month', onclick: save2('replace') }),
         el('button', { type: 'button', text: 'Add to what’s already in this month', onclick: save2('add') }),
@@ -768,6 +812,8 @@
     state.profile.status = f.status.value;
     state.profile.youDob = f.youDob.value;
     state.profile.spouseDob = f.spouseDob.value;
+    PROFILE_NUM.forEach((k) => { state.profile[k] = f[k].value === '' ? '' : Number(f[k].value); });
+    PROFILE_CHECK.forEach((k) => { state.profile[k] = f[k].checked; });
     save(); renderAll();
   }
 
@@ -838,6 +884,8 @@
       ['bandMarriedOneEarner', '20% band (married, one earner)'], ['bandSecondEarnerMax', 'Band increase, second earner (max)'],
       ['rentCreditSingle', 'Rent credit (single)'], ['rentCreditCouple', 'Rent credit (couple)'],
       ['homeCarer', 'Home carer credit'], ['mortgageInterestMax', 'Mortgage interest credit (max)'],
+      ['spccc', 'Single Person Child Carer Credit'], ['blind', 'Blind person’s credit'],
+      ['incapChild', 'Incapacitated child credit'], ['depRelative', 'Dependent relative credit'],
     ];
     const data = [{ head: true, cells: ['', ...years.map((y) => y + (Tax.RATES[y].verify ? ' (check)' : ''))] }];
     fields.forEach(([k, label]) => data.push({ cells: [label, ...years.map((y) => {
@@ -957,7 +1005,7 @@
     let data;
     try { data = parseBackup(text); } catch (e) { setStatus('Could not restore: ' + e.message, true); return; }
     armConfirm(btn, 'Replace my data', () => {
-      state = Object.assign(defaultState(), data);
+      state = Object.assign(defaultState(), data); tccKey = '';
       save(); resetExpenseForm(); renderAll();
       setStatus(`Restored ${state.expenses.length} receipts.`);
     });
@@ -1310,6 +1358,592 @@
     $('#glossary').replaceChildren(...Guide.GLOSSARY.flatMap(([t, d]) => [el('dt', { text: t }), el('dd', { text: d })]));
   }
 
+
+  // =====================================================================
+  // Review: Tax Credit Certificate, emergency tax, payslips, assessment,
+  // Statement of Liability
+  // =====================================================================
+  let reviewPerson = 'you';
+  let tccKey = '';
+  const BASIS = { cumulative: 'Cumulative (normal)', week1: 'Week 1 / Month 1', emergency: 'Emergency' };
+
+  function tccOf(yd, p) {
+    yd.tcc = yd.tcc || {};
+    yd.tcc[p] = yd.tcc[p] || [];
+    return yd.tcc[p];
+  }
+
+  function tccTotals(yd, p) {
+    const jobs = (yd.tcc && yd.tcc[p]) || [];
+    return {
+      count: jobs.length,
+      credits: r2(jobs.reduce((a, j) => a + (Number(j.credits) || 0), 0)),
+      band: r2(jobs.reduce((a, j) => a + (Number(j.band) || 0), 0)),
+      basis: jobs.find((j) => j.basis === 'emergency') ? 'emergency' : jobs.find((j) => j.basis === 'week1') ? 'week1' : 'cumulative',
+    };
+  }
+
+  function personLabel(p) { return p === 'you' ? 'You' : 'Your spouse'; }
+
+  function renderPersonTabs(box, current, onPick) {
+    box.hidden = !married();
+    box.replaceChildren(...[['you', 'You'], ['spouse', 'Spouse']].map(([k, label]) => el('button', {
+      type: 'button', class: 'seg' + (k === current ? ' on' : ''), 'aria-pressed': String(k === current), text: label,
+      onclick: () => onPick(k),
+    })));
+  }
+
+  // What the person (or this person's share, for a couple) should have.
+  function expectedFor(y, p) {
+    const input = inputFor(y);
+    if (married()) return Tax.suggestSplit(input)[p];
+    const e = Tax.entitlement(input);
+    return { credits: e.credits, band: e.band };
+  }
+
+  function renderTcc() {
+    const y = Number(state.selectedYear);
+    const yd = yearData(y);
+    if (!married()) reviewPerson = 'you';
+    renderPersonTabs($('#tccPerson'), reviewPerson, (k) => { reviewPerson = k; renderReview(); });
+    const jobs = tccOf(yd, reviewPerson);
+    const key = `${y}:${reviewPerson}:${jobs.length}:${married()}`;
+    const num = (v) => (v === '' || v == null ? '' : String(v));
+    const rows = key === tccKey ? null : jobs.map((j, i) => {
+      // Editing a box saves and refreshes the results, but keeps the form in place.
+      const upd = (field) => (e) => {
+        const v = e.target.value;
+        j[field] = field === 'employer' || field === 'basis' ? v : (v === '' ? '' : Number(v));
+        save(); renderDashboard(); renderReview(); renderSaveTips();
+      };
+      return el('div', { class: 'job-row' }, [
+        el('label', {}, ['Employer', el('input', { type: 'text', value: j.employer || '', id: `job-employer-${i}`, onchange: upd('employer'), placeholder: 'e.g. Main job' })]),
+        el('label', {}, ['Yearly tax credits (€)', el('input', { type: 'number', step: '0.01', min: '0', inputmode: 'decimal', id: `job-credits-${i}`, value: num(j.credits), onchange: upd('credits') })]),
+        el('label', {}, ['Yearly rate band (€)', el('input', { type: 'number', step: '0.01', min: '0', inputmode: 'decimal', id: `job-band-${i}`, value: num(j.band), onchange: upd('band') })]),
+        el('label', {}, ['Basis', el('select', { id: `job-basis-${i}`, onchange: upd('basis') },
+          Object.entries(BASIS).map(([k, label]) => el('option', { value: k, text: label, selected: (j.basis || 'cumulative') === k })))]),
+        el('button', { type: 'button', class: 'link danger', text: 'Remove', onclick: (ev) => armConfirm(ev.currentTarget, 'Confirm remove', () => {
+          jobs.splice(i, 1); save(); renderAll();
+        }) }),
+      ]);
+    });
+    if (rows) {
+      tccKey = key;
+      $('#tccJobs').replaceChildren(...(rows.length ? rows : [el('p', { class: 'muted small', text: `No jobs added for ${personLabel(reviewPerson).toLowerCase()} yet. Add each job on the certificate.` })]));
+    }
+
+    // Result: compare with what you should have.
+    const result = $('#tccResult');
+    const t = tccTotals(yd, reviewPerson);
+    if (!t.count) { result.replaceChildren(); return; }
+    const exp = expectedFor(y, reviewPerson);
+    const lines = [];
+    const creditGap = r2(exp.credits - t.credits);
+    const bandGap = r2(exp.band - t.band);
+    const row = (label, have, want) => el('tr', {}, [el('td', { text: label }), el('td', { class: 'num', text: eur.format(have) }),
+      el('td', { class: 'num', text: eur.format(want) })]);
+    const table = el('table', { class: 'tbl' }, [
+      el('tr', {}, [el('th', { text: '' }), el('th', { class: 'num', text: 'On certificate' }), el('th', { class: 'num', text: married() ? 'Suggested' : 'Expected' })]),
+      row('Tax credits', t.credits, exp.credits), row('20% rate band', t.band, exp.band),
+    ]);
+    if (creditGap >= 1) {
+      lines.push(el('p', { class: 'flag bad' }, [el('strong', { text: `Up to ${eur.format(creditGap)} of credits may be missing. ` }),
+        married() ? 'Between you, check the married credit is shared as suggested (myAccount → Manage your tax → Allocate tax credits).' : 'Check you’re getting every credit listed below, and claim any that are missing in myAccount.']));
+    } else if (creditGap <= -1) {
+      lines.push(el('p', { class: 'flag ok', text: 'Your certificate has more than the standard credits, usually because you’ve already claimed something this year, such as the rent credit or health expenses. That’s fine.' }));
+    } else {
+      lines.push(el('p', { class: 'flag ok', text: 'Your credits look right.' }));
+    }
+    if (bandGap >= 1) {
+      lines.push(el('p', { class: 'flag bad', text: `Your 20% band is ${eur.format(bandGap)} lower than ${married() ? 'suggested' : 'expected'}, so more of your pay is taxed at 40% than should be.` }));
+    }
+    if (t.count > 1) {
+      lines.push(el('p', { class: 'flag', text: 'With more than one job, put most of your credits and band on the job that pays most. Any job with no credits pays 20% or 40% on every euro. Change the split in myAccount → Manage your tax → Jobs and pensions.' }));
+    }
+    const e = Tax.entitlement(inputFor(y)).detail;
+    const names = { personal: 'Personal credit', employee: 'Employee (PAYE) credit', ageCredit: 'Age credit', singleParent: 'Single Person Child Carer Credit',
+      widowedParent: 'Widowed Parent Credit', blind: 'Blind Person’s Credit', incapChild: 'Incapacitated Child Credit', depRelative: 'Dependent Relative Credit', homeCarer: 'Home carer credit' };
+    const list = Object.entries(names).filter(([k]) => e[k] > 0).map(([k, n]) => el('li', {}, [n, ': ', el('strong', { text: eur.format(e[k]) })]));
+    result.replaceChildren(el('div', { class: 'scroll' }, [table]), ...lines,
+      el('details', { class: 'help' }, [el('summary', { text: married() ? 'Credits you’re entitled to between you' : 'Credits you’re entitled to' }),
+        el('div', { class: 'help-body' }, [el('ul', { class: 'help-steps' }, list),
+          el('p', { class: 'muted small', text: 'Credits for receipts (health, rent and so on) come on top once claimed.' })])]));
+  }
+
+  function monthlyGross(yd, p) {
+    const months = (yd.months && yd.months[p]) || {};
+    const arr = [];
+    for (let m = 1; m <= 12; m++) arr.push(Number((months[m] || {}).gross) || 0);
+    return arr;
+  }
+
+  function renderEmergency() {
+    const y = Number(state.selectedYear);
+    const yd = yearData(y);
+    const card = $('#emergencyCard');
+    const who = married() ? ['you', 'spouse'] : ['you'];
+    const affected = who.map((p) => [p, tccTotals(yd, p)]).filter(([, t]) => t.basis !== 'cumulative');
+    if (!affected.length) { card.hidden = true; return; }
+    card.hidden = false;
+    const parts = [el('h2', { text: affected.some(([, t]) => t.basis === 'emergency') ? 'You may be on emergency tax' : 'You’re on Week 1 / Month 1 basis' })];
+    affected.forEach(([p, t]) => {
+      const exp = expectedFor(y, p);
+      // A typical month: the average of months entered, or the yearly pay ÷ 12.
+      const paidMonths = monthlyGross(yd, p).filter((g) => g > 0);
+      const month = yd.payMode === 'month' && paidMonths.length
+        ? paidMonths.reduce((a, b) => a + b, 0) / paidMonths.length
+        : (Number(yd[p + 'Gross']) || 0) / 12;
+      if (t.basis === 'emergency') {
+        const normal = Tax.month1Paye(month, exp.credits, exp.band);
+        const emergency = Tax.emergencyPaye(y, month, 2, true);
+        const extra = r2(emergency - normal);
+        parts.push(el('p', {}, [el('strong', { text: `${personLabel(p)}: ` }),
+          month > 0 ? `on about ${eur0.format(month)} a month, emergency tax takes about ${eur.format(emergency)} instead of ${eur.format(normal)}, roughly ${eur.format(extra)} too much each month.`
+            : 'emergency tax means no credits and 40% on almost everything. Add your pay under Income to see how much.']));
+      } else {
+        parts.push(el('p', {}, [el('strong', { text: `${personLabel(p)}: ` }),
+          'each payday is taxed on its own, so credits you didn’t use earlier in the year aren’t given back. You’re not overpaying each month, but you won’t get a catch-up refund until the year ends or the basis changes.']));
+      }
+    });
+    parts.push(el('ol', { class: 'help-steps' }, [
+      el('li', {}, rich('Sign in to **myAccount** → PAYE Services → **Manage your tax** → **Jobs and pensions**.')),
+      el('li', {}, rich('Check the job is listed with the right start date. If not, **Add job**.')),
+      el('li', {}, rich('Revenue sends your employer your credits within a few days. The extra tax is refunded through your next pay packets.')),
+    ]));
+    parts.push(el('p', { class: 'muted small', text: 'If you’ve left the job, claim the refund instead through myAccount → Review your tax after the year ends.' }));
+    card.replaceChildren(...parts);
+  }
+
+  function renderPayslipCheck() {
+    const y = Number(state.selectedYear);
+    const yd = yearData(y);
+    const p = married() ? reviewPerson : 'you';
+    const box = $('#payslipCheck');
+    const months = (yd.months && yd.months[p]) || {};
+    const paid = Object.keys(months).map(Number).filter((m) => Number(months[m].gross) > 0).sort((a, b) => a - b);
+    if (yd.payMode !== 'month' || !paid.length) {
+      box.replaceChildren(el('p', { class: 'muted small' }, ['Enter pay month by month (or read your payslips) under ',
+        el('a', { href: '#', text: 'Income', onclick: (e) => { e.preventDefault(); goTo('profile'); } }), ' to check each one.']));
+      return;
+    }
+    const t = tccTotals(yd, p);
+    const basisOf = t.count ? t.basis : 'cumulative';
+    const exp = t.count ? { credits: t.credits, band: t.band } : expectedFor(y, p);
+    const gross = monthlyGross(yd, p);
+    let expected;
+    if (basisOf === 'cumulative') expected = Tax.cumulativePaye(gross, exp.credits, exp.band);
+    else if (basisOf === 'week1') expected = gross.map((g) => (g ? Tax.month1Paye(g, exp.credits, exp.band) : 0));
+    else { let n = 0; expected = gross.map((g) => (g ? Tax.emergencyPaye(y, g, ++n, true) : 0)); }
+    const rows = [el('tr', {}, ['Month', 'Pay', 'Tax taken', 'Should be', ''].map((h, i) => el('th', { class: i ? 'num' : '', text: h })))];
+    let flagged = 0;
+    for (let m = 1; m <= 12; m++) {
+      const v = months[m];
+      if (!v || !(Number(v.gross) > 0)) continue;
+      const taken = v.tax === '' || v.tax == null ? null : Number(v.tax);
+      const diff = taken == null ? null : r2(taken - expected[m - 1]);
+      const bad = diff != null && Math.abs(diff) >= 5;
+      if (bad) flagged++;
+      rows.push(el('tr', { class: bad ? 'flag-row' : '' }, [
+        el('td', { text: MONTH_NAMES[m - 1] }), el('td', { class: 'num', text: eur.format(Number(v.gross)) }),
+        el('td', { class: 'num', text: taken == null ? '—' : eur.format(taken) }), el('td', { class: 'num', text: eur.format(expected[m - 1]) }),
+        el('td', { class: 'num', text: diff == null ? '' : Math.abs(diff) < 5 ? 'OK' : diff > 0 ? `${eur.format(diff)} too much` : `${eur.format(-diff)} too little` }),
+      ]));
+    }
+    const note = t.count
+      ? `Using the credits (${eur.format(exp.credits)}) and band (${eur.format(exp.band)}) on your certificate, ${BASIS[basisOf].toLowerCase()} basis.`
+      : `Using the credits (${eur.format(exp.credits)}) and band (${eur.format(exp.band)}) you should have. Add your Tax Credit Certificate above for an exact check.`;
+    box.replaceChildren(el('div', { class: 'scroll' }, [el('table', { class: 'tbl' }, rows)]),
+      el('p', { class: flagged ? 'flag bad' : 'flag ok', text: flagged
+        ? `${flagged} payslip${flagged === 1 ? '' : 's'} took a different amount than expected. Small differences can come from bonuses, benefits or a credit change during the year; bigger ones are worth asking your payroll about.`
+        : 'Every payslip matches what your credits and band should give.' }),
+      el('p', { class: 'muted small', text: note }));
+  }
+
+  function renderAssessment() {
+    const card = $('#assessCard');
+    if (!married()) { card.hidden = true; return; }
+    const y = Number(state.selectedYear);
+    const c = Tax.compareAssessment(inputFor(y));
+    card.hidden = false;
+    const better = c.difference > 0 ? 'Joint assessment saves you' : c.difference < 0 ? 'Separate assessment would save you' : '';
+    $('#assessResult').replaceChildren(
+      el('div', { class: 'scroll' }, [el('table', { class: 'tbl' }, [
+        el('tr', {}, [el('td', { text: 'Taxed together (joint)' }), el('td', { class: 'num', text: eur.format(c.joint) })]),
+        el('tr', {}, [el('td', { text: 'Taxed separately' }), el('td', { class: 'num', text: eur.format(c.separate) })]),
+      ])]),
+      el('p', { class: c.difference >= 0 ? 'flag ok' : 'flag bad' }, better
+        ? [el('strong', { text: `${better} ${eur.format(Math.abs(c.difference))}` }), c.difference > 0 ? '. Keep joint assessment.' : '. Ask Revenue about separate assessment.']
+        : ['Both ways come to the same tax.']),
+      el('p', { class: 'muted small', text: 'Joint assessment lets you share credits and the 20% band, so it usually wins when one of you earns more. Separate assessment uses each person’s own receipts (receipts not marked as your spouse’s count as yours).' }));
+  }
+
+  function renderStatement() {
+    const y = Number(state.selectedYear);
+    const yd = yearData(y);
+    const sol = yd.sol || {};
+    const f = $('#solForm');
+    ['solIncome', 'solCredits', 'solLiability', 'solPaid'].forEach((k) => { if (document.activeElement !== f[k]) f[k].value = sol[k] ?? ''; });
+    const box = $('#solResult');
+    if (!['solIncome', 'solCredits', 'solLiability', 'solPaid'].some((k) => sol[k] !== '' && sol[k] != null)) { box.replaceChildren(); return; }
+    const base = Tax.computeYear(inputFor(y));
+    const lines = [];
+    const cmp = (label, theirs, ours) => {
+      if (theirs === '' || theirs == null) return null;
+      const d = r2(Number(theirs) - ours);
+      return el('tr', {}, [el('td', { text: label }), el('td', { class: 'num', text: eur.format(Number(theirs)) }), el('td', { class: 'num', text: eur.format(ours) }),
+        el('td', { class: 'num', text: Math.abs(d) < 1 ? 'Same' : (d > 0 ? '+' : '−') + eur.format(Math.abs(d)) })]);
+    };
+    const rows = [
+      el('tr', {}, ['', 'Revenue', 'Taxback', 'Difference'].map((h, i) => el('th', { class: i ? 'num' : '', text: h }))),
+      cmp('Income', sol.solIncome, base.totalGross),
+      cmp('Tax credits', sol.solCredits, base.totalCredits),
+      cmp('Tax after credits', sol.solLiability, base.liability),
+      cmp('Tax paid', sol.solPaid, base.taxPaid),
+    ].filter(Boolean);
+    if (sol.solIncome !== '' && sol.solIncome != null && Math.abs(Number(sol.solIncome) - base.totalGross) >= 1) {
+      lines.push(el('p', { class: 'flag', text: 'Revenue has a different income. Check every job, taxable benefit and social welfare payment is entered under Income, or that Revenue isn’t missing one.' }));
+    }
+    if (sol.solCredits !== '' && sol.solCredits != null && base.totalCredits - Number(sol.solCredits) >= 1) {
+      const missing = r2(base.totalCredits - Number(sol.solCredits));
+      lines.push(el('p', { class: 'flag bad', text: `Revenue gave ${eur.format(missing)} fewer credits than Taxback expects. You may not have claimed everything: compare with “Your numbers for myAccount” on the Start page and add what’s missing to your return.` }));
+    }
+    if (sol.solLiability !== '' && sol.solPaid !== '' && sol.solLiability != null && sol.solPaid != null) {
+      const bal = r2(Number(sol.solPaid) - Number(sol.solLiability));
+      lines.push(el('p', { class: bal >= 0 ? 'flag ok' : 'flag bad', text: bal >= 0
+        ? `Revenue’s figures mean you overpaid ${eur.format(bal)}. It’s paid to your bank account, usually within about 5 working days.`
+        : `Revenue’s figures mean you underpaid ${eur.format(-bal)}. Revenue usually collects this by reducing your credits over up to 4 years. You can also pay it at once in myAccount.` }));
+    }
+    box.replaceChildren(el('div', { class: 'scroll' }, [el('table', { class: 'tbl' }, rows)]), ...lines);
+  }
+
+  async function readStatementFile(file, password) {
+    const status = (msg, bad) => $('#solResult').replaceChildren(el('p', { class: bad ? 'flag bad' : 'muted small', text: msg }));
+    status(`Reading ${file.name}…`);
+    try {
+      const r = await Payslip.readStatement(file, password);
+      const found = ['income', 'credits', 'liability', 'paid'].filter((k) => r[k] != null);
+      if (!found.length) { status('We couldn’t find the figures in that PDF. Type them in from your Statement of Liability instead.', true); return; }
+      const yd = yearData(Number(state.selectedYear));
+      yd.sol = Object.assign({}, yd.sol, {
+        solIncome: r.income ?? yd.sol?.solIncome ?? '', solCredits: r.credits ?? yd.sol?.solCredits ?? '',
+        solLiability: r.liability ?? yd.sol?.solLiability ?? '', solPaid: r.paid ?? yd.sol?.solPaid ?? '',
+      });
+      save(); renderAll();
+      toast(`Read ${found.length} figure${found.length === 1 ? '' : 's'} from your Statement. Check them against the PDF.`);
+    } catch (e) {
+      if (e.name === 'NeedsPassword') {
+        const pw = el('input', { type: 'password', id: 'solPassword', autocomplete: 'off' });
+        $('#solResult').replaceChildren(el('p', { text: e.message }), el('div', { class: 'calc-row' }, [el('label', { for: 'solPassword' }, ['Password', pw]),
+          el('button', { type: 'button', class: 'primary', text: 'Open', onclick: () => readStatementFile(file, pw.value) })]));
+        return;
+      }
+      status(e.message, true);
+    }
+  }
+
+  function renderReview() {
+    renderTcc();
+    renderEmergency();
+    renderPayslipCheck();
+    renderAssessment();
+    renderStatement();
+  }
+
+  // =====================================================================
+  // Start page extras: myAccount sheet, life events, reminders
+  // =====================================================================
+  function renderClaimSheet() {
+    const y = Number(state.selectedYear);
+    const input = inputFor(y);
+    const base = Tax.computeYear(input);
+    const sum = (cat, filter) => r2(state.expenses.filter((e) => Number(e.year) === y && e.category === cat && (!filter || filter(e))).reduce((a, e) => a + Number(e.amount), 0));
+    const yd = state.years[y] || {};
+    const items = [
+      ['Health expenses', 'Health and Medical Expenses → amount you paid', sum('health')],
+      ['Medical insurance (employer-paid)', 'Medical Insurance → gross premium your employer paid', sum('medicalInsurance', (e) => e.paidBy !== 'self')],
+      ['Rent Tax Credit', 'Rent Tax Credit → rent paid, with your landlord’s details and RTB number', sum('rent')],
+      ['Remote working relief', `Remote Working Expenses → total bills, and ${yd.wfhDays || 0} days worked from home`, sum('remoteWorking')],
+      ['Tuition fees', 'Tuition Fees → fees paid, college and course name', sum('tuition')],
+      ['Pension (AVC / PRSA)', 'Pension contributions → amount paid outside your wages', sum('pension')],
+      ['Nursing home fees', 'Health and Medical Expenses → nursing home', sum('nursingHome')],
+      ['Flat rate expenses', 'Employment Expenses → flat rate expenses for your job', sum('flatRate')],
+      ['Mortgage interest', 'Mortgage Interest Tax Credit → interest paid this year and in 2022', sum('mortgageInterest')],
+    ].filter(([, , v]) => v > 0);
+    const credits = [
+      ['Home carer credit', base.credits.homeCarer], ['Single Person Child Carer Credit', base.credits.singleParent],
+      ['Widowed Parent Credit', base.credits.widowedParent], ['Age credit', base.credits.ageCredit], ['Blind Person’s Credit', base.credits.blind],
+      ['Incapacitated Child Credit', base.credits.incapChild], ['Dependent Relative Credit', base.credits.depRelative],
+    ].filter(([, v]) => v > 0);
+    const box = $('#claimSheet');
+    if (!items.length && !credits.length) {
+      box.replaceChildren(el('p', { class: 'muted small', text: `Add receipts for ${y} and your numbers for myAccount will appear here, ready to copy.` }));
+      return;
+    }
+    const copyBtn = (v) => el('button', { type: 'button', class: 'link', text: 'Copy', onclick: async (e) => {
+      const b = e.currentTarget;
+      try { await navigator.clipboard.writeText(String(v)); b.textContent = 'Copied'; } catch (err) { b.textContent = String(v); }
+      setTimeout(() => { b.textContent = 'Copy'; }, 1500);
+    } });
+    box.replaceChildren(
+      el('h3', { text: `Your numbers for myAccount, ${y}` }),
+      el('p', { class: 'muted small', text: 'In the Income Tax Return, go to Tax Credits and Reliefs and enter these. Amounts are what you paid; Revenue works out the credit.' }),
+      el('div', { class: 'scroll' }, [el('table', { class: 'tbl sheet-table' }, [
+        ...items.map(([name, where, v]) => el('tr', {}, [el('td', {}, [el('strong', { text: name }), el('span', { class: 'item-meta', text: where })]),
+          el('td', { class: 'num', text: v.toFixed(2) }), el('td', { class: 'num' }, [copyBtn(v.toFixed(2))])])),
+        ...credits.map(([name, v]) => el('tr', {}, [el('td', {}, [el('strong', { text: name }), el('span', { class: 'item-meta', text: 'You and your family → claim the credit (no amount to enter)' })]),
+          el('td', { class: 'num', text: eur.format(v) }), el('td', {})])),
+      ])]));
+  }
+
+  function renderLifeEvents() {
+    $('#lifeEvents').replaceChildren(...Guide.LIFE_EVENTS.map((ev) => el('details', { class: 'acc' }, [
+      el('summary', { text: ev.title }),
+      el('div', { class: 'acc-body' }, ev.text.map((t) => el('p', {}, rich(t)))),
+    ])));
+  }
+
+  function nextDate(month, day) {
+    const now = new Date();
+    let d = new Date(now.getFullYear(), month - 1, day);
+    if (d < now) d = new Date(now.getFullYear() + 1, month - 1, day);
+    return d;
+  }
+
+  function renderReminders() {
+    const ymd = (d) => `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+    const iso = (d) => d.toISOString().slice(0, 10);
+    $('#reminders').replaceChildren(...Guide.REMINDERS.map((r) => {
+      const d = nextDate(r.month, r.day);
+      const end = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
+      const google = 'https://calendar.google.com/calendar/render?action=TEMPLATE'
+        + `&text=${encodeURIComponent('Taxback: ' + r.title)}&dates=${ymd(d)}/${ymd(end)}`
+        + `&details=${encodeURIComponent(r.detail)}&recur=${encodeURIComponent('RRULE:FREQ=YEARLY')}`;
+      const outlook = 'https://outlook.live.com/calendar/0/deeplink/compose?allday=true'
+        + `&subject=${encodeURIComponent('Taxback: ' + r.title)}&startdt=${iso(d)}&enddt=${iso(end)}&body=${encodeURIComponent(r.detail)}`;
+      return el('li', {}, [
+        el('div', { class: 'rem-date' }, [el('span', { text: d.toLocaleDateString('en-IE', { day: 'numeric' }) }), el('small', { text: d.toLocaleDateString('en-IE', { month: 'short' }) })]),
+        el('div', { class: 'rem-body' }, [el('strong', { text: r.title }), el('span', { class: 'muted small', text: r.detail }),
+          el('span', { class: 'rem-links' }, [el('a', { href: google, target: '_blank', rel: 'noopener', text: 'Add to Google Calendar' }), ' · ',
+            el('a', { href: outlook, target: '_blank', rel: 'noopener', text: 'Add to Outlook' })])]),
+      ]);
+    }));
+  }
+
+  function renderBenefits() {
+    $('#benefits').replaceChildren(...Guide.BENEFITS.flatMap(([t, d]) => [el('dt', { text: t }), el('dd', { text: d })]));
+  }
+
+  // =====================================================================
+  // Overview extras: ways to pay less, underpayment explainer
+  // =====================================================================
+  function renderSaveTips() {
+    const y = Number(state.selectedYear);
+    const input = inputFor(y);
+    const base = Tax.computeYear(input);
+    const tips = [];
+    if (base.totalGross > 0) {
+      const plan = Tax.avcPlan(input);
+      if (plan.at40 >= 100) {
+        tips.push(el('li', {}, [el('strong', { text: `Pay up to ${eur0.format(plan.at40)} more into a pension (AVC or PRSA) and save ${eur0.format(plan.saving)} in tax. ` }),
+          `That part of your income is taxed at 40%, so each €100 you put in costs you only €60. ${y < new Date().getFullYear() ? `For ${y}, it must be paid by 31 October ${y + 1}.` : 'Payments by 31 October next year can still count for this year.'}`]));
+      } else if (plan.totalRoom >= 100) {
+        tips.push(el('li', {}, [el('strong', { text: 'Pension top-ups save 20% for you this year. ' }),
+          `You have room for about ${eur0.format(plan.totalRoom)} more, but none of your income is taxed at 40%, so it saves less.`]));
+      }
+    }
+    const yes = Guide.QUIZ.filter(([cat]) => state.checklist[`${y}:quiz:${cat}`] === 'yes' && !state.expenses.some((e) => Number(e.year) === y && e.category === cat));
+    if (yes.length) {
+      tips.push(el('li', {}, [el('strong', { text: 'You said yes to things you haven’t added yet: ' }),
+        yes.map(([cat]) => Tax.CATEGORIES[cat].label.toLowerCase()).join(', ') + '. ',
+        el('a', { href: '#', text: 'Add them', onclick: (e) => { e.preventDefault(); addReceipt(yes[0][0]); } })]));
+    }
+    if (!married() && !state.profile.singleParent && Number(state.profile.children) > 0) {
+      tips.push(el('li', {}, [el('strong', { text: 'Single parent? ' }), 'If a child lives with you for most of the year, tick it under Income → Your situation. It’s worth up to €1,900 a year and an extra €4,000 taxed at 20%.']));
+    }
+    if (y >= new Date().getFullYear() && state.expenses.some((e) => Number(e.year) === y && e.category === 'rent')) {
+      tips.push(el('li', {}, [el('strong', { text: 'Claim the rent credit now. ' }), 'You don’t have to wait for the year to end: myAccount → Manage your tax → Claim tax credits → Rent Tax Credit.']));
+    }
+    if (married()) {
+      const c = Tax.compareAssessment(input);
+      if (c.difference < -1) tips.push(el('li', {}, [el('strong', { text: `Separate assessment could save ${eur0.format(-c.difference)}. ` }), 'See the Review tab.']));
+    }
+    $('#saveCard').hidden = !tips.length;
+    $('#saveTips').replaceChildren(el('ul', { class: 'tips' }, tips));
+  }
+
+  // =====================================================================
+  // Receipt photos (kept in this browser with IndexedDB)
+  // =====================================================================
+  let pendingPhoto = null; // Blob waiting to be saved with the receipt, or 'remove'
+
+  function photoDb() {
+    return new Promise((resolve, reject) => {
+      let req;
+      try { req = indexedDB.open('taxback-photos', 1); } catch (e) { reject(e); return; }
+      req.onupgradeneeded = () => req.result.createObjectStore('photos');
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+  async function photoOp(mode, fn) {
+    const d = await photoDb();
+    return new Promise((resolve, reject) => {
+      const tx = d.transaction('photos', mode);
+      const req = fn(tx.objectStore('photos'));
+      tx.oncomplete = () => resolve(req ? req.result : undefined);
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+  const photoPut = (id, blob) => photoOp('readwrite', (s) => s.put(blob, id));
+  const photoGet = (id) => photoOp('readonly', (s) => s.get(id)).catch(() => null);
+  const photoDel = (id) => photoOp('readwrite', (s) => s.delete(id)).catch(() => null);
+
+  async function shrinkImage(file) {
+    const url = URL.createObjectURL(file);
+    try {
+      const img = await new Promise((resolve, reject) => { const i = new Image(); i.onload = () => resolve(i); i.onerror = reject; i.src = url; });
+      const scale = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.naturalWidth * scale); c.height = Math.round(img.naturalHeight * scale);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      return await new Promise((resolve) => c.toBlob((b) => resolve(b || file), 'image/jpeg', 0.82));
+    } catch (e) {
+      return file;
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  function showPhotoPreview(blob, note) {
+    const box = $('#photoPreview');
+    if (!blob) { box.replaceChildren(note ? el('span', { class: 'muted small', text: note }) : ''); return; }
+    const url = URL.createObjectURL(blob);
+    const img = el('img', { src: url, alt: 'Receipt photo' });
+    img.onload = () => setTimeout(() => URL.revokeObjectURL(url), 1000);
+    box.replaceChildren(img, el('button', { type: 'button', class: 'link danger', text: 'Remove photo', onclick: () => { pendingPhoto = 'remove'; showPhotoPreview(null); } }));
+  }
+
+  async function openPhoto(id) {
+    const blob = await photoGet(id);
+    const viewer = el('div', { class: 'viewer', role: 'dialog', 'aria-label': 'Receipt photo', onclick: (e) => { if (e.target === viewer) viewer.remove(); } });
+    const close = el('button', { type: 'button', class: 'viewer-close', text: 'Close', onclick: () => viewer.remove() });
+    if (blob) {
+      const url = URL.createObjectURL(blob);
+      viewer.append(el('img', { src: url, alt: 'Receipt photo' }), close);
+    } else {
+      viewer.append(el('p', { class: 'viewer-msg', text: 'This photo is on another device. Photos stay on the device they were taken on.' }), close);
+    }
+    document.body.append(viewer);
+    close.focus();
+    viewer.addEventListener('keydown', (e) => { if (e.key === 'Escape') viewer.remove(); });
+  }
+
+  // =====================================================================
+  // Sync across devices (the hosted page's private per-person storage)
+  // =====================================================================
+  const sync = { ref: null, on: false, busy: false, again: false, timer: 0, unsub: null, status: 'local' };
+
+  function syncPref() { try { return localStorage.getItem('taxback.sync') !== 'off'; } catch (e) { return true; } }
+  function setSyncPref(on) { try { localStorage.setItem('taxback.sync', on ? 'on' : 'off'); } catch (e) { /* ignore */ } }
+
+  function setSync(status) {
+    sync.status = status;
+    const text = {
+      local: 'Sync works on the hosted Taxback page. Here, your data stays in this browser.',
+      unavailable: 'Sync isn’t available in this view. Your data stays in this browser.',
+      connecting: 'Connecting…',
+      slow: 'Can’t reach the sync service yet. Changes are saved in this browser and will sync when it’s back.',
+      on: 'On. Your figures and receipts are saved privately to your account and appear wherever you open this page. Only you can see them.',
+      saving: 'Saving…',
+      off: 'Off. Your data stays in this browser only.',
+      error: 'Sync stopped. Your data is still saved in this browser. Reload the page to try again.',
+    }[status];
+    $('#syncText').textContent = text;
+    const t = $('#syncToggle');
+    t.disabled = status === 'local' || status === 'unavailable';
+    t.checked = sync.on;
+    $('#syncBox').classList.toggle('on', sync.on && status !== 'error');
+  }
+
+  async function syncInit() {
+    if (!(window.claude && typeof window.claude.use === 'function')) { setSync('local'); return; }
+    let db = null; let user = null;
+    try { [db, user] = await Promise.all([window.claude.use('db'), window.claude.use('user')]); } catch (e) { /* unavailable */ }
+    if (!db || typeof db.doc !== 'function' || !user || typeof user.id !== 'function') { setSync('unavailable'); return; }
+    let id = null;
+    try { id = await user.id(); } catch (e) { id = null; }
+    if (!id) { setSync('unavailable'); return; }
+    try { sync.ref = db.doc(`data/users/${id}/taxback`); } catch (e) { setSync('unavailable'); return; }
+    if (!syncPref()) { setSync('off'); return; }
+    startSync();
+  }
+
+  async function startSync() {
+    sync.on = true;
+    setSync('connecting');
+    const slow = setTimeout(() => { if (sync.status === 'connecting') setSync('slow'); }, 10000);
+    try {
+      const snap = await sync.ref.get();
+      clearTimeout(slow);
+      applyRemote(snap, true);
+    } catch (e) {
+      clearTimeout(slow); sync.on = false; setSync('error'); return;
+    }
+    sync.unsub = sync.ref.onSnapshot((snap) => {
+      if (snap.metadata && snap.metadata.hasPendingWrites) return;
+      applyRemote(snap, false);
+    }, () => { sync.on = false; setSync('error'); });
+  }
+
+  function stopSync() {
+    sync.on = false;
+    if (sync.unsub) { sync.unsub(); sync.unsub = null; }
+    setSync('off');
+  }
+
+  function hasData() { return state.expenses.length > 0 || Object.keys(state.years).length > 0; }
+
+  function applyRemote(snap, first) {
+    const remote = snap && snap.exists ? snap.data() : null;
+    const remoteAt = remote ? Number(remote.updatedAt) || 0 : 0;
+    const localAt = Number(state.updatedAt) || 0;
+    if (remote && typeof remote.state === 'string' && remoteAt > localAt) {
+      try {
+        state = Object.assign(defaultState(), JSON.parse(remote.state));
+        state.updatedAt = remoteAt;
+        tccKey = '';
+        persist();
+        resetExpenseForm(); renderAll();
+        toast(first ? 'Loaded your data from your other devices.' : 'Updated with changes from another device.');
+      } catch (e) { /* ignore a bad copy */ }
+    } else if (first && localAt > remoteAt && hasData()) {
+      push();
+    }
+    if (sync.status !== 'saving') setSync('on');
+  }
+
+  async function push() {
+    if (!sync.on || !sync.ref) return;
+    if (sync.busy) { sync.again = true; return; }
+    sync.busy = true;
+    setSync('saving');
+    try {
+      await sync.ref.set({ state: JSON.stringify(state), updatedAt: Number(state.updatedAt) || Date.now() });
+      setSync('on');
+    } catch (e) {
+      if (e && e.code === 'quota_exceeded') toast('Your synced copy is full. Delete some old receipts, or turn sync off.');
+      setSync(e && e.code === 'unavailable' ? 'slow' : 'error');
+    }
+    sync.busy = false;
+    if (sync.again) { sync.again = false; push(); }
+  }
+
+  function schedulePush() {
+    if (!sync.on) return;
+    clearTimeout(sync.timer);
+    sync.timer = setTimeout(push, 1200);
+  }
+
   // ---------- Navigation ----------
   function showTab(name) {
     $$('.tabs [role=tab]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === name)));
@@ -1333,6 +1967,9 @@
     renderProfile();
     renderChecklist();
     renderGuide();
+    renderReview();
+    renderClaimSheet();
+    renderSaveTips();
     updateFormForCategory();
   }
 
@@ -1343,6 +1980,37 @@
     $('#fab').addEventListener('click', () => { resetExpenseForm(); goTo('expenses'); $('#catTiles .cat-tile[aria-pressed="true"]').focus(); });
     renderCategoryOptions();
     renderRates();
+    renderLifeEvents();
+    renderReminders();
+    renderBenefits();
+    $('#addJob').addEventListener('click', () => {
+      const jobs = tccOf(yearData(Number(state.selectedYear)), married() ? reviewPerson : 'you');
+      jobs.push({ employer: jobs.length ? `Job ${jobs.length + 1}` : 'Main job', credits: '', band: '', basis: 'cumulative' });
+      save(); renderAll();
+      const i = jobs.length - 1;
+      const c = document.getElementById(`job-credits-${i}`);
+      if (c) c.focus();
+    });
+    $('#solForm').addEventListener('change', (e) => {
+      const f = e.currentTarget;
+      const yd = yearData(Number(state.selectedYear));
+      yd.sol = {};
+      ['solIncome', 'solCredits', 'solLiability', 'solPaid'].forEach((k) => { yd.sol[k] = f[k].value === '' ? '' : Number(f[k].value); });
+      save(); renderAll();
+    });
+    $('#solFile').addEventListener('change', (e) => { const file = e.target.files[0]; e.target.value = ''; if (file) readStatementFile(file); });
+    $('#photoInput').addEventListener('change', async (e) => {
+      const file = e.target.files[0]; e.target.value = '';
+      if (!file) return;
+      if (!/^image\//.test(file.type)) { toast('Choose a photo (JPEG, PNG or HEIC).'); return; }
+      showPhotoPreview(null, 'Preparing photo…');
+      pendingPhoto = await shrinkImage(file);
+      showPhotoPreview(pendingPhoto);
+    });
+    $('#syncToggle').addEventListener('change', (e) => {
+      setSyncPref(e.target.checked);
+      if (e.target.checked) startSync(); else stopSync();
+    });
     attachFieldHelp();
     buildRentCalc();
     renderGuideStatic();
@@ -1372,7 +2040,7 @@
     $('#importFile').addEventListener('change', (e) => { if (e.target.files[0]) loadFile(e.target.files[0]); e.target.value = ''; });
     $('#resetBtn').addEventListener('click', (e) => {
       armConfirm(e.currentTarget, 'Click again to delete everything', () => {
-        state = defaultState(); save(); resetExpenseForm(); renderAll();
+        state = defaultState(); tccKey = ''; save(); resetExpenseForm(); renderAll();
         setStatus('All data deleted.');
       });
     });
@@ -1382,6 +2050,7 @@
     showTab(tab);
     resetExpenseForm();
     renderAll();
+    syncInit();
   }
 
   init();

@@ -111,7 +111,7 @@ describe('first visit', () => {
 
   it('every tab opens and every help box has content', async () => {
     const p = await newPage();
-    for (const tab of ['guide', 'dashboard', 'expenses', 'profile', 'checklist', 'data']) {
+    for (const tab of ['guide', 'dashboard', 'expenses', 'profile', 'review', 'checklist', 'data']) {
       await p.click(`[data-tab=${tab}]`);
       assert.equal(await p.isVisible(`#tab-${tab}`), true, tab);
     }
@@ -504,7 +504,7 @@ describe('layout', () => {
     it(`no sideways scrolling at phone width (${scheme})`, async () => {
       const p = await newPage({ context: { viewport: { width: 375, height: 800 }, colorScheme: scheme } });
       await p.selectOption('#yearSelect', '2025');
-      for (const tab of ['guide', 'dashboard', 'expenses', 'profile', 'checklist', 'data']) {
+      for (const tab of ['guide', 'dashboard', 'expenses', 'profile', 'review', 'checklist', 'data']) {
         await p.click(`[data-tab=${tab}]`);
         if (tab === 'profile') await p.click('#modeMonth');
         await p.$$eval('details', (d) => d.forEach((x) => { x.open = true; }));

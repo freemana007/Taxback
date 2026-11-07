@@ -273,3 +273,114 @@ test('USC and PRSI in the yearly result: per person, before pension, not on welf
     expenses: [{ year: 2025, category: 'pension', amount: 5000 }, { year: 2025, category: 'health', amount: 900 }] });
   assert.equal(withClaims.usc.total, 1046);
 });
+
+// ---------- Circumstance credits ----------
+test('single parent: credit and extra €4,000 at 20% (2025)', () => {
+  // band 44,000 + 4,000 = 48,000. 50,000 → 9,600 + 2,000 × 40% 800 = 10,400 − (2,000 + 2,000 + 1,900) = 4,500
+  const r = Tax.computeYear(single(2025, 50000, [], { situation: { singleParent: true, children: 1 } }));
+  assert.equal(r.band, 48000);
+  assert.equal(r.credits.singleParent, 1900);
+  assert.equal(r.liability, 4500);
+  // its value includes the extra band: 1,900 credit + 4,000 at 20% instead of 40% (800) = 2,700
+  assert.equal(Tax.claimValues(single(2025, 50000, [], { situation: { singleParent: true } })).values.singleParent, 2700);
+});
+
+test('widowed: married credit in the year of bereavement, then widowed credits', () => {
+  const w = (year, sit) => Tax.computeYear({ year, status: 'widowed', people: { you: { gross: 40000 } }, expenses: [], situation: sit });
+  assert.equal(w(2024, { bereavementYear: 2024 }).credits.personal, 3750);
+  // no children: single + 540
+  assert.equal(w(2025, { bereavementYear: 2023 }).credits.personal, 2540);
+  // with a child: single credit, single parent credit, and widowed parent credit for year 2 after (3,150)
+  const c = w(2025, { bereavementYear: 2023, singleParent: true });
+  assert.equal(c.credits.personal, 2000);
+  assert.equal(c.credits.singleParent, 1900);
+  assert.equal(c.credits.widowedParent, 3150);
+  // more than 5 years after: none
+  assert.equal(w(2025, { bereavementYear: 2019, singleParent: true }).credits.widowedParent, 0);
+});
+
+test('age 65+: age credit and exemption with marginal relief', () => {
+  const old = (gross, status = 'single') => Tax.computeYear({ year: 2025, status, expenses: [],
+    people: { you: { gross: 0, welfare: gross, dob: '1958-01-01' }, spouse: { gross: 0 } } });
+  // 17,000 income, under the 18,000 limit: no tax
+  assert.equal(old(17000).liability, 0);
+  // 20,000: normal 4,000 − 2,000 − 245 = 1,755; capped at 40% × 2,000 = 800
+  const r = old(20000);
+  assert.equal(r.credits.ageCredit, 245);
+  assert.equal(r.liability, 800);
+  assert.equal(r.ageExemption.applied, true);
+  // married: age credit 490 and 36,000 limit
+  const m = old(30000, 'married');
+  assert.equal(m.credits.ageCredit, 490);
+  assert.equal(m.liability, 0);
+});
+
+test('blind, incapacitated child and dependent relative credits', () => {
+  const r = Tax.computeYear(single(2025, 60000, [], { situation: { blind: { you: true }, incapChildren: 1, depRelatives: 2 } }));
+  assert.equal(r.credits.blind, 1950);
+  assert.equal(r.credits.incapChild, 3800);
+  assert.equal(r.credits.depRelative, 610);
+  const both = Tax.computeYear({ year: 2025, status: 'married', expenses: [], situation: { blind: { you: true, spouse: true } },
+    people: { you: { gross: 50000 }, spouse: { gross: 20000 } } });
+  assert.equal(both.credits.blind, 3900);
+  // they show up as claims
+  const v = Tax.claimValues(single(2025, 60000, [], { situation: { incapChildren: 1 } }));
+  assert.equal(v.values.incapChild, 3800);
+});
+
+// ---------- Joint versus separate ----------
+test('joint assessment beats separate when one spouse earns more', () => {
+  // joint 2025, 70,000 + 10,000: band 63,000 → 12,600 + 17,000 × 40% 6,800 = 19,400 − (4,000 + 2,000 + 2,000) = 11,400
+  // separate: 70,000 single → 8,800 + 10,400 = 19,200 − 4,000 = 15,200; 10,000 → 2,000 − (2,000 + 2,000) = 0
+  const c = Tax.compareAssessment({ year: 2025, status: 'married', expenses: [], people: { you: { gross: 70000 }, spouse: { gross: 10000 } } });
+  assert.deepEqual([c.joint, c.separate, c.difference], [11400, 15200, 3800]);
+});
+
+// ---------- Payslip checks ----------
+test('cumulative PAYE month by month', () => {
+  // 2025 single: credits 4,000, band 44,000 → monthly 333.33 credits, 3,666.67 band.
+  // 5,000 a month: (3,666.67 × 20% + 1,333.33 × 40%) − 333.33 = 733.33 + 533.33 − 333.33 = 933.33
+  const m = Tax.cumulativePaye(Array(12).fill(5000), 4000, 44000);
+  assert.equal(m[0], 933.33);
+  assert.equal(Math.round(m.reduce((a, b) => a + b, 0) * 100) / 100, 11200); // matches the yearly 11,200
+  // a month with no pay, then pay: the unused band and credits carry forward
+  // A month with no pay: payroll refunds. After month 2: 5,000 within the 7,333.33 band → 1,000 − 666.67
+  // credits = 333.33 due, 933.33 paid → −600. Month 3: 10,000 within 11,000 → 2,000 − 1,000 = 1,000 → 666.67.
+  const gap = Tax.cumulativePaye([5000, 0, 5000], 4000, 44000);
+  assert.deepEqual(gap, [933.33, -600, 666.67]);
+});
+
+test('month 1 basis and emergency tax', () => {
+  assert.equal(Tax.month1Paye(5000, 4000, 44000), 933.33);
+  // emergency with a PPS number, first month: 3,666.67 × 20% + 1,333.33 × 40% = 1,266.67; later months 40% of all
+  assert.equal(Tax.emergencyPaye(2025, 5000, 1, true), 1266.67);
+  assert.equal(Tax.emergencyPaye(2025, 5000, 2, true), 2000);
+  assert.equal(Tax.emergencyPaye(2025, 5000, 1, false), 2000);
+});
+
+// ---------- Pension planning ----------
+test('AVC room and the part that saves 40%', () => {
+  // age 40 → 25% × 60,000 = 15,000 limit; 3,000 from wages and 2,000 AVC already → 10,000 room
+  // 60,000 − 2,000 AVC = 58,000 taxable; 14,000 above the 44,000 band → all 10,000 saves 40% = 4,000
+  const p = Tax.avcPlan(single(2025, 60000, [exp(2025, 'pension', 2000)], { people: { you: { gross: 60000, pensionFromWages: 3000, dob: '1985-06-01' } } }));
+  assert.equal(p.totalRoom, 10000);
+  assert.equal(p.at40, 10000);
+  assert.equal(p.saving, 4000);
+  // close to the band: only the part above it saves 40%
+  const q = Tax.avcPlan(single(2025, 46000));
+  assert.equal(q.at40, 2000);
+});
+
+test('suggested credit and band split for a couple', () => {
+  // 2025: 70,000 and 20,000. Entitlement: credits 4,000 + 2,000 + 2,000 = 8,000; band 53,000 + 20,000.
+  // Higher earner: band 53,000, own 2,000 employee credit + all 4,000 shareable (their tax easily uses it)
+  // Lower earner: band 20,000 (the increase), own 2,000 employee credit
+  const s = Tax.suggestSplit({ year: 2025, status: 'married', expenses: [],
+    people: { you: { gross: 20000 }, spouse: { gross: 70000 } } });
+  assert.deepEqual(s.spouse, { credits: 6000, band: 53000 });
+  assert.deepEqual(s.you, { credits: 2000, band: 20000 });
+  // when the higher earner is under the shared band, the spare band goes to the other person
+  const t = Tax.suggestSplit({ year: 2025, status: 'married', expenses: [],
+    people: { you: { gross: 40000 }, spouse: { gross: 30000 } } });
+  assert.deepEqual([t.you.band, t.spouse.band], [40000, 13000 + 30000]);
+});

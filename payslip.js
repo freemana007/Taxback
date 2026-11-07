@@ -112,6 +112,10 @@
     });
 
     const text = clean.join('\n');
+    // Emergency or Week 1 / Month 1 basis is usually printed on the payslip.
+    let basis = null;
+    if (/\bemergency\b/i.test(text)) basis = 'emergency';
+    else if (/(\b(week|month|wk|mth)\s*1\b(\s*basis)?|\b[wm]1\b|non[\s-]?cumulative|temporary\s*basis)/i.test(text)) basis = 'week1';
     const freq = text.match(/\b(weekly|fortnightly|monthly|4[\s-]*weekly)\b/i);
     const val = (o) => (o ? o.value : null);
     return {
@@ -125,7 +129,45 @@
       prsiYTD: val(found.prsi.ytd),
       payDate: parseDate(text),
       frequency: freq ? freq[1].toLowerCase().replace(/\s|-/g, '') : null,
+      basis,
     };
+  }
+
+  /**
+   * Find the main figures on a Revenue Statement of Liability: total income,
+   * total tax credits, liability after credits and tax paid. Returns nulls
+   * for anything not found.
+   */
+  function parseStatement(lines) {
+    const clean = lines.map((l) => String(l).replace(/\s+/g, ' ').trim()).filter(Boolean);
+    const rules = {
+      income: /(total\s*(gross\s*)?income|gross\s*income|total\s*income)/i,
+      credits: /(total\s*(tax\s*)?credits|tax\s*credits\s*total)/i,
+      liability: /(total\s*(tax\s*)?liability|liability\s*after\s*credits|tax\s*liability|net\s*tax\s*(due|liability)|income\s*tax\s*due)/i,
+      paid: /(tax\s*(paid|deducted)|total\s*(tax\s*)?paid|paye\s*(paid|deducted))/i,
+    };
+    const out = { income: null, credits: null, liability: null, paid: null };
+    clean.forEach((line, i) => {
+      Object.entries(rules).forEach(([k, re]) => {
+        if (out[k] != null || !re.test(line)) return;
+        if (k === 'income' && /(usc|prsi|non[\s-]?paye)/i.test(line)) return;
+        let nums = numbersIn(afterLabel(line, re));
+        if (!nums.length && clean[i + 1]) nums = numbersIn(clean[i + 1]);
+        if (nums.length) out[k] = nums[nums.length - 1];
+      });
+    });
+    const text = clean.join('\n');
+    const over = text.match(/(overpa(id|yment)|refund)[^\d\n]{0,30}(€?\s?[\d,]+\.\d{2})/i);
+    const under = text.match(/(underpa(id|yment))[^\d\n]{0,30}(€?\s?[\d,]+\.\d{2})/i);
+    out.overpaid = over ? numbersIn(over[3])[0] : null;
+    out.underpaid = under ? numbersIn(under[3])[0] : null;
+    return out;
+  }
+
+  async function readStatement(file, password) {
+    const lines = await readPdf(file, password);
+    if (!lines.join('').trim()) throw new Error('This PDF has no readable text. Type the figures in instead.');
+    return Object.assign(parseStatement(lines), { lines });
   }
 
   // ---------- Browser: PDF loading ----------
@@ -208,5 +250,5 @@
     return Object.assign(parseText(lines), { lines });
   }
 
-  return { parseText, numbersIn, parseDate, readFile, NeedsPassword, PDFJS_BASE };
+  return { parseText, parseStatement, numbersIn, parseDate, readFile, readStatement, NeedsPassword, PDFJS_BASE };
 });
