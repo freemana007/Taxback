@@ -17,7 +17,7 @@ const Tax = require('../../tax.js');
 
 const ROOT = path.join(__dirname, '..', '..');
 const FIX = path.join(__dirname, '..', 'fixtures');
-const CSP = "default-src 'none'; script-src 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'unsafe-inline'; img-src data: blob:; worker-src blob:; connect-src 'none'";
+const CSP = "default-src 'none'; script-src 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src data: blob:; worker-src blob:; connect-src 'none'";
 
 function findPdfJs() {
   const dirs = [process.env.PDFJS_DIR, path.join(ROOT, 'node_modules/pdfjs-dist/build')].filter(Boolean);
@@ -35,6 +35,8 @@ async function newPage(opts = {}) {
   const ctx = await browser.newContext(Object.assign({ viewport: { width: 1200, height: 900 } }, opts.context));
   await ctx.addInitScript(() => { window.confirm = () => false; window.alert = () => {}; window.prompt = () => null; });
   if (opts.init) await ctx.addInitScript(opts.init);
+  // Fonts come from Google Fonts in the hosted page; serve them empty here.
+  await ctx.route('https://fonts.googleapis.com/**', (r) => r.fulfill({ contentType: 'text/css', body: '' }));
   if (PDFJS) {
     await ctx.route('https://cdnjs.cloudflare.com/**', (r) => r.fulfill({
       contentType: 'application/javascript',
@@ -94,6 +96,13 @@ describe('first visit', () => {
     assert.equal(await p.isVisible('#tab-guide'), true);
     const chips = await p.$$eval('.step .chip', (n) => n.map((x) => x.textContent));
     assert.deepEqual(chips, ['Do this next', 'To do', 'To do', 'To do', 'To do', 'To do']);
+    assert.equal(await p.isVisible('#fab'), false, 'add button only on the Overview');
+    await p.click('[data-tab=dashboard]');
+    assert.equal(await p.isVisible('#fab'), true);
+    assert.match(await text(p, '#heroNext'), /0 of 6 steps done/);
+    await p.click('#fab');
+    assert.equal(await p.isVisible('#tab-expenses'), true);
+    await p.click('[data-tab=guide]');
     assert.equal(await p.$$eval('.quiz-item', (n) => n.length), 9);
     assert.match(await text(p, '#deadlineBanner'), /left to claim for 2022/);
     assert.deepEqual(p.errors, []);
@@ -160,6 +169,12 @@ describe('full household walkthrough (married, 2025)', () => {
 
   it('adds receipts of every kind, with sums, guards and edits', async () => {
     await addReceipt(p, { cat: 'health', amount: '60 + 60 + 1,250.50', desc: 'GP and physio' });
+    // a message says what the receipt is worth: 1,370.50 × 20% = 274.10
+    assert.match(await text(p, '#toast'), /Added health expenses\. Saves you €274\.10/);
+    // tiles choose the receipt type
+    await p.click('#catTiles .cat-tile[data-cat=rent]');
+    assert.equal(await p.inputValue('#catSelect'), 'rent');
+    assert.equal(await p.getAttribute('#catTiles .cat-tile[data-cat=rent]', 'aria-pressed'), 'true');
     await addReceipt(p, { cat: 'medicalInsurance', amount: 2400, adults: 2, paidBy: 'employer', desc: 'Work health plan' });
     // self-paid insurance is refused
     await p.selectOption('#catSelect', 'medicalInsurance');
@@ -496,7 +511,7 @@ describe('layout', () => {
         assert.equal(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, tab);
       }
       const bg = await p.evaluate(() => getComputedStyle(document.body).backgroundColor);
-      assert.equal(bg === 'rgb(17, 22, 20)', scheme === 'dark');
+      assert.equal(bg === 'rgb(12, 18, 16)', scheme === 'dark');
       assert.deepEqual(p.errors, []);
       await p.context().close();
     });

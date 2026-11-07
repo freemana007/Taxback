@@ -15,6 +15,7 @@ js.concat(css).forEach((src) => {
 
 const title = html.match(/<title>[\s\S]*?<\/title>/)[0];
 const desc = html.match(/<meta name="description"[^>]*>/)[0];
+const fonts = (html.match(/<link rel="stylesheet" href="https:\/\/fonts\.googleapis\.com[^>]*>/) || [''])[0];
 const body = html.match(/<body>([\s\S]*)<\/body>/)[1]
   .replace(/\s*<script src="[^"]+"><\/script>/g, '');
 
@@ -22,6 +23,7 @@ const out = [
   title,
   '<meta name="claude:viewport-fit-sides" content="cover">',
   desc,
+  fonts,
   `<style>\n${css}</style>`,
   body.trim(),
   `<script>\n${js[0]}</script>`,

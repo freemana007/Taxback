@@ -5,29 +5,35 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Taxback</title>
   <meta name="description" content="Track tax receipts, estimate Irish PAYE refunds and watch claim deadlines. Data stays in your browser.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Figtree:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <header class="top">
     <div class="brand">
-      <span class="logo" aria-hidden="true">€</span>
+      <span class="logo" aria-hidden="true">
+        <svg viewBox="0 0 32 32" width="32" height="32"><path d="M7 4h18v24l-3-2-3 2-3-2-3 2-3-2-3 2z" fill="currentColor"/><path d="M19.5 12.2a4.2 4.2 0 1 0 0 7.6M12 14.6h6M12 17.4h6" fill="none" stroke="var(--logo-ink)" stroke-width="1.8" stroke-linecap="round"/></svg>
+      </span>
       <div>
         <h1>Taxback</h1>
-        <p class="sub">Irish PAYE tax manager</p>
+        <p class="sub">Your Irish tax, sorted</p>
       </div>
     </div>
-    <label class="year-pick">Tax year
+    <label class="year-pick"><span>Tax year</span>
       <select id="yearSelect"></select>
     </label>
   </header>
 
-  <nav class="tabs" role="tablist">
-    <button role="tab" data-tab="guide" aria-selected="true">Start here</button>
-    <button role="tab" data-tab="dashboard">Overview</button>
-    <button role="tab" data-tab="expenses">Receipts</button>
-    <button role="tab" data-tab="profile">Income &amp; settings</button>
-    <button role="tab" data-tab="checklist">Checklist</button>
-    <button role="tab" data-tab="data">Rates &amp; data</button>
+  <div class="shell">
+  <nav class="tabs" role="tablist" aria-label="Sections">
+    <button role="tab" data-tab="guide" data-icon="home" aria-selected="true"><span class="tab-label">Start</span></button>
+    <button role="tab" data-tab="dashboard" data-icon="chart"><span class="tab-label">Overview</span></button>
+    <button role="tab" data-tab="expenses" data-icon="receipt"><span class="tab-label">Receipts</span></button>
+    <button role="tab" data-tab="profile" data-icon="wallet"><span class="tab-label">Income</span></button>
+    <button role="tab" data-tab="checklist" data-icon="check"><span class="tab-label">Checklist</span></button>
+    <button role="tab" data-tab="data" data-icon="shield"><span class="tab-label">Backup</span></button>
   </nav>
 
   <main>
@@ -62,7 +68,11 @@
 
     <!-- OVERVIEW -->
     <section id="tab-dashboard" class="tab" hidden>
-      <div class="stats" id="stats"></div>
+      <div class="hero">
+        <p class="hero-eyebrow" id="heroEyebrow"></p>
+        <div class="stats" id="stats"></div>
+        <div class="hero-foot" id="heroNext"></div>
+      </div>
       <p class="notice" id="yearNote" hidden></p>
       <div class="grid2">
         <div class="card">
@@ -70,8 +80,11 @@
           <p class="muted small">Tax saved by each relief for the selected year, based on your income and receipts.</p>
           <table class="tbl" id="claimTable"></table>
         </div>
-        <div class="card">
-          <h2>Tax calculation</h2>
+        <div class="card statement">
+          <div class="statement-head">
+            <h2>Tax calculation</h2>
+            <span class="statement-tag">Estimate</span>
+          </div>
           <table class="tbl" id="calcTable"></table>
         </div>
       </div>
@@ -92,9 +105,11 @@
     <section id="tab-expenses" class="tab" hidden>
       <div class="card">
         <h2>Add a receipt</h2>
+        <p class="muted small">What did you pay for?</p>
+        <div class="cat-tiles" id="catTiles" role="group" aria-label="Receipt type"></div>
         <form id="expenseForm" class="form">
-          <label>Category
-            <select name="category" id="catSelect" required></select>
+          <label class="sr-only">Category
+            <select name="category" id="catSelect" required tabindex="-1" aria-hidden="true"></select>
           </label>
           <label>Amount (€)
             <input name="amount" id="amountInput" type="text" required inputmode="decimal" autocomplete="off" placeholder="e.g. 60 or 60 + 45 + 120">
@@ -307,6 +322,13 @@
       </div>
     </section>
   </main>
+  </div>
+
+  <button type="button" class="fab" id="fab" hidden>
+    <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+    <span>Add receipt</span>
+  </button>
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
   <script src="tax.js"></script>
   <script src="guide.js"></script>

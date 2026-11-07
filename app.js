@@ -81,6 +81,54 @@
     'wfhDays', 'mortgageInterest2022', 'carerIncome'];
   const YEAR_CHECK_FIELDS = ['homeCarer', 'youMedicalCard', 'spouseMedicalCard'];
 
+
+  // ---------- Icons (24×24, drawn with the current text colour) ----------
+  const ICON_PATHS = {
+    home: 'M4 11.5 12 5l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H5a1 1 0 0 1-1-1z',
+    chart: 'M4 20h16M7 16v-4M12 16V8M17 16v-7',
+    receipt: 'M6 3.5h12v17l-2.5-1.6L13 20.5l-2.5-1.6L8 20.5 6 19.2zM9 8h6M9 11.5h6M9 15h3.5',
+    wallet: 'M4 7.5A2.5 2.5 0 0 1 6.5 5H18v3M4 7.5V17a2 2 0 0 0 2 2h13a1 1 0 0 0 1-1V9a1 1 0 0 0-1-1H6.5A2.5 2.5 0 0 1 4 7.5zM16 13.5h.01',
+    check: 'M5 12.5l4 4L19 7',
+    shield: 'M12 3.5 5 6v5.5c0 4.2 2.9 7.7 7 9 4.1-1.3 7-4.8 7-9V6zM9 12l2 2 4-4',
+    plus: 'M12 5v14M5 12h14',
+    health: 'M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10zM12 9.5v5M9.5 12h5',
+    medicalInsurance: 'M12 3.5 5 6v5.5c0 4.2 2.9 7.7 7 9 4.1-1.3 7-4.8 7-9V6zM12 9v6M9 12h6',
+    rent: 'M4 11 12 4.5l8 6.5M6 9.5V20h12V9.5M10 20v-5h4v5',
+    tuition: 'M3 9l9-4.5L21 9l-9 4.5zM7 11v4.5c1.4 1.3 3.1 2 5 2s3.6-.7 5-2V11M21 9v5',
+    mortgageInterest: 'M4 20h16M5 10h14M12 4l8 6H4zM7 10v7M12 10v7M17 10v7',
+    pension: 'M5 13.5C5 9.9 8.1 7 12 7s7 2.9 7 6.5c0 1.6-.7 3-1.8 4.1V20h-3v-1.2a8 8 0 0 1-4.4 0V20h-3v-2.4A5.6 5.6 0 0 1 5 13.5zM12 7V4.5M15 11h.01',
+    remoteWorking: 'M4 6h16v10H4zM2.5 19h19M10 16v3M14 16v3',
+    nursingHome: 'M3 18V8M3 14h18v4M21 14v-2a2 2 0 0 0-2-2h-7v4M7 12.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z',
+    flatRate: 'M9 7V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V7M4 7h16v11a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1zM4 12h16',
+  };
+
+  function icon(name, size) {
+    const ns = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('aria-hidden', 'true');
+    if (size) { svg.setAttribute('width', size); svg.setAttribute('height', size); }
+    const path = document.createElementNS(ns, 'path');
+    path.setAttribute('d', ICON_PATHS[name] || ICON_PATHS.receipt);
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', 'currentColor');
+    path.setAttribute('stroke-width', '1.8');
+    path.setAttribute('stroke-linecap', 'round');
+    path.setAttribute('stroke-linejoin', 'round');
+    svg.append(path);
+    return svg;
+  }
+
+  // ---------- Toast ----------
+  let toastTimer = 0;
+  function toast(children) {
+    const t = $('#toast');
+    t.replaceChildren(...[].concat(children));
+    t.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { t.hidden = true; }, 4500);
+  }
+
   // ---------- Helpers ----------
   function el(tag, attrs, children) {
     const n = document.createElement(tag);
@@ -283,12 +331,22 @@
   function renderCategoryOptions() {
     const opts = Object.entries(Tax.CATEGORIES).map(([k, v]) => el('option', { value: k, text: v.label }));
     $('#catSelect').replaceChildren(...opts);
+    $('#catTiles').replaceChildren(...Object.entries(Tax.CATEGORIES).map(([k, v]) => {
+      const b = el('button', { type: 'button', class: 'cat-tile', 'data-cat': k, 'aria-pressed': 'false', onclick: () => {
+        $('#catSelect').value = k;
+        updateFormForCategory();
+        $('#amountInput').focus({ preventScroll: true });
+      } }, [v.label]);
+      b.prepend(icon(k));
+      return b;
+    }));
     $('#expFilter').replaceChildren(el('option', { value: '', text: 'All categories' }),
       ...Object.entries(Tax.CATEGORIES).map(([k, v]) => el('option', { value: k, text: v.label })));
   }
 
   function updateFormForCategory() {
     const cat = $('#catSelect').value;
+    $$('#catTiles .cat-tile').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.cat === cat)));
     if ($('#catGuide').dataset.cat !== cat) renderCatGuide(cat);
     $$('.med-only').forEach((n) => { n.hidden = cat !== 'medicalInsurance'; });
     $$('.rent-only').forEach((n) => { n.hidden = cat !== 'rent'; });
@@ -345,6 +403,8 @@
       item.paidBy = f.paidBy.value || 'employer';
     }
     if (item.category === 'tuition') item.partTime = f.partTime.checked;
+    const valueBefore = Tax.YEARS.includes(item.year) ? Tax.claimValues(inputFor(item.year)).total : 0;
+    const wasEditing = !!editingId;
     if (editingId) {
       state.expenses = state.expenses.map((x) => (x.id === editingId ? item : x));
     } else {
@@ -354,6 +414,21 @@
     save();
     resetExpenseForm();
     renderAll();
+    const label = Tax.CATEGORIES[item.category].label.toLowerCase();
+    if (!Tax.YEARS.includes(item.year)) {
+      toast(`Saved ${eur.format(item.amount)} ${label}. ${item.year} isn’t a tax year this app covers.`);
+      return;
+    }
+    const after = Tax.claimValues(inputFor(item.year));
+    const gain = Math.round((after.total - valueBefore) * 100) / 100;
+    const yd = state.years[item.year] || {};
+    if (!(Number(yd.youGross) > 0 || Number(yd.spouseGross) > 0)) {
+      toast([`${wasEditing ? 'Updated' : 'Added'} ${eur.format(item.amount)} ${label}. `, el('strong', { text: 'Add your pay' }), ' to see what it’s worth.']);
+    } else if (gain > 0) {
+      toast([`${wasEditing ? 'Updated' : 'Added'} ${label}. `, el('strong', { text: `Saves you ${eur.format(gain)}` }), ` · ${item.year} total ${eur.format(after.total)}`]);
+    } else {
+      toast(`${wasEditing ? 'Updated' : 'Added'} ${label}. It doesn’t change your tax for ${item.year} (you may have reached a limit).`);
+    }
   }
 
   function startEdit(item) {
@@ -394,6 +469,7 @@
       const total = arr.reduce((a, b) => a + Number(b.amount), 0);
       return el('div', { class: 'group' }, [
         el('div', { class: 'group-head' }, [
+          el('span', { class: 'group-icon' }, [icon(cat)]),
           el('span', { text: Tax.CATEGORIES[cat] ? Tax.CATEGORIES[cat].label : cat }),
           el('span', { class: 'num', text: eur.format(total) }),
         ]),
@@ -1101,6 +1177,24 @@
     goTo('expenses', '#amountInput');
   }
 
+  function renderHero(steps) {
+    const y = Number(state.selectedYear);
+    const done = steps.filter((s) => s.done).length;
+    const next = steps.find((s) => !s.done);
+    const deadline = Tax.claimDeadline(y);
+    const open = Tax.daysUntil(deadline, new Date()) > 0;
+    $('#heroEyebrow').textContent = `Tax year ${y} · ${open ? `claim by ${fmtDate.format(deadline)}` : 'claims closed'}`;
+    const fill = el('div', { class: 'progress-fill' });
+    fill.style.width = `${Math.round((done / steps.length) * 100)}%`;
+    $('#heroNext').replaceChildren(
+      el('div', { class: 'progress' }, [
+        el('span', { class: 'progress-label', text: done === steps.length ? `All ${steps.length} steps done for ${y}` : `${done} of ${steps.length} steps done${next ? ` · next: ${next.title.toLowerCase()}` : ''}` }),
+        el('div', { class: 'progress-track', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': String(steps.length), 'aria-valuenow': String(done) }, [fill]),
+      ]),
+      next ? el('button', { type: 'button', class: 'primary', text: next.action[0], onclick: () => { showTab('guide'); next.action[1](); } }) : '',
+    );
+  }
+
   function renderGuide() {
     const y = Number(state.selectedYear);
     const yd = state.years[y] || {};
@@ -1155,6 +1249,7 @@
       },
     ];
     const next = steps.findIndex((s) => !s.done);
+    renderHero(steps);
     $('#guideSteps').replaceChildren(...steps.map((s, i) => {
       const status = s.done ? 'done' : i === next ? 'next' : 'todo';
       const btn = el('button', { type: 'button', class: status === 'next' ? 'primary' : '', text: s.action[0], onclick: s.action[1] });
@@ -1219,6 +1314,7 @@
   function showTab(name) {
     $$('.tabs [role=tab]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === name)));
     $$('.tab').forEach((s) => { s.hidden = s.id !== 'tab-' + name; });
+    $('#fab').hidden = name !== 'dashboard';
     try { sessionStorage.setItem('taxback.tab', name); } catch (e) { /* ignore */ }
   }
 
@@ -1243,6 +1339,8 @@
   // ---------- Init ----------
   function init() {
     if (!Tax.YEARS.includes(Number(state.selectedYear))) state.selectedYear = Tax.openYears(new Date()).slice(-1)[0];
+    $$('.tabs [data-icon]').forEach((b) => b.prepend(icon(b.dataset.icon)));
+    $('#fab').addEventListener('click', () => { resetExpenseForm(); goTo('expenses'); $('#catTiles .cat-tile[aria-pressed="true"]').focus(); });
     renderCategoryOptions();
     renderRates();
     attachFieldHelp();
