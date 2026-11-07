@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en-IE">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Taxback</title>
+  <meta name="description" content="Track tax receipts, estimate Irish PAYE refunds and watch claim deadlines. Data stays in your browser.">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">€</span>
+      <div>
+        <h1>Taxback</h1>
+        <p class="sub">Irish PAYE tax manager</p>
+      </div>
+    </div>
+    <label class="year-pick">Tax year
+      <select id="yearSelect"></select>
+    </label>
+  </header>
+
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-tab="dashboard" aria-selected="true">Overview</button>
+    <button role="tab" data-tab="expenses">Receipts</button>
+    <button role="tab" data-tab="profile">Income &amp; settings</button>
+    <button role="tab" data-tab="checklist">Checklist</button>
+    <button role="tab" data-tab="data">Rates &amp; data</button>
+  </nav>
+
+  <main>
+    <div id="deadlineBanner"></div>
+
+    <!-- OVERVIEW -->
+    <section id="tab-dashboard" class="tab">
+      <div class="stats" id="stats"></div>
+      <div class="grid2">
+        <div class="card">
+          <h2>What your claims are worth</h2>
+          <p class="muted small">Tax saved by each relief for the selected year, based on your income and receipts.</p>
+          <table class="tbl" id="claimTable"></table>
+        </div>
+        <div class="card">
+          <h2>Tax calculation</h2>
+          <table class="tbl" id="calcTable"></table>
+        </div>
+      </div>
+      <div class="card">
+        <h2>All open years</h2>
+        <p class="muted small">You can claim back up to 4 years. Each year closes on 31 December, four years later.</p>
+        <div class="scroll"><table class="tbl" id="yearsTable"></table></div>
+      </div>
+    </section>
+
+    <!-- RECEIPTS -->
+    <section id="tab-expenses" class="tab" hidden>
+      <div class="card">
+        <h2>Add a receipt</h2>
+        <form id="expenseForm" class="form">
+          <label>Category
+            <select name="category" id="catSelect" required></select>
+          </label>
+          <label>Amount (€)
+            <input name="amount" type="number" step="0.01" min="0" required inputmode="decimal">
+          </label>
+          <label>Date
+            <input name="date" type="date" required>
+          </label>
+          <label class="person-field">Whose
+            <select name="person">
+              <option value="you">You</option>
+              <option value="spouse">Spouse</option>
+            </select>
+          </label>
+          <label class="wide">Description
+            <input name="description" type="text" placeholder="e.g. Dr Murphy, physio, Bord Gáis bill" maxlength="120">
+          </label>
+          <label class="med-only" hidden>Adults covered
+            <input name="adults" type="number" min="0" step="1" value="1">
+          </label>
+          <label class="med-only" hidden>Children covered
+            <input name="children" type="number" min="0" step="1" value="0">
+          </label>
+          <label class="check tuition-only" hidden>
+            <input name="partTime" type="checkbox"> Part-time course
+          </label>
+          <p class="hint wide" id="catHint"></p>
+          <div class="wide actions">
+            <button type="submit" class="primary" id="expSubmit">Add receipt</button>
+            <button type="button" id="expCancel" hidden>Cancel edit</button>
+          </div>
+        </form>
+      </div>
+      <div class="card">
+        <div class="row-between">
+          <h2>Receipts for <span id="expYearLabel"></span></h2>
+          <label class="inline">Show
+            <select id="expFilter"><option value="">All categories</option></select>
+          </label>
+        </div>
+        <div id="expenseList"></div>
+      </div>
+    </section>
+
+    <!-- PROFILE -->
+    <section id="tab-profile" class="tab" hidden>
+      <div class="card">
+        <h2>You</h2>
+        <form id="profileForm" class="form">
+          <label>Assessment
+            <select name="status">
+              <option value="single">Single</option>
+              <option value="married">Married / civil partners, jointly assessed</option>
+            </select>
+          </label>
+          <label>Your date of birth
+            <input name="youDob" type="date">
+          </label>
+          <label class="spouse-only">Spouse's date of birth
+            <input name="spouseDob" type="date">
+          </label>
+          <p class="hint wide">Date of birth sets your pension relief limit (15% under 30, up to 40% at 60+).</p>
+        </form>
+      </div>
+      <div class="card">
+        <h2>Tax year <span class="yr"></span></h2>
+        <p class="muted small">Find these on myAccount → PAYE Services → Review your tax → Employment Detail Summary.</p>
+        <form id="yearForm" class="form">
+          <label>Your gross pay (€)
+            <input name="youGross" type="number" step="0.01" min="0" inputmode="decimal">
+          </label>
+          <label>Your income tax paid (€)
+            <input name="youTaxPaid" type="number" step="0.01" min="0" inputmode="decimal">
+          </label>
+          <label class="spouse-only">Spouse's gross pay (€)
+            <input name="spouseGross" type="number" step="0.01" min="0" inputmode="decimal">
+          </label>
+          <label class="spouse-only">Spouse's income tax paid (€)
+            <input name="spouseTaxPaid" type="number" step="0.01" min="0" inputmode="decimal">
+          </label>
+          <label>Days worked from home
+            <input name="wfhDays" type="number" min="0" max="366" step="1">
+          </label>
+          <label>Mortgage interest paid in 2022 (€)
+            <input name="mortgageInterest2022" type="number" step="0.01" min="0" inputmode="decimal">
+          </label>
+          <label class="check spouse-only">
+            <input name="homeCarer" type="checkbox"> One of us is a home carer
+          </label>
+          <label class="spouse-only carer-only">Home carer's own income (€)
+            <input name="carerIncome" type="number" step="0.01" min="0" inputmode="decimal">
+          </label>
+          <p class="hint wide">Gross pay should be pay for income tax purposes (after pension contributions made through payroll). Leave tax paid empty if you just want to see what your claims are worth.</p>
+        </form>
+      </div>
+    </section>
+
+    <!-- CHECKLIST -->
+    <section id="tab-checklist" class="tab" hidden>
+      <div id="checklist"></div>
+    </section>
+
+    <!-- DATA -->
+    <section id="tab-data" class="tab" hidden>
+      <div class="card">
+        <h2>Your data</h2>
+        <p class="muted">Everything is stored only in this browser. Nothing is uploaded. Export a backup now and then, especially before clearing your browser.</p>
+        <div class="actions">
+          <button id="exportBtn" class="primary">Export backup (JSON)</button>
+          <button id="exportCsvBtn">Export receipts (CSV)</button>
+          <label class="button">Import backup
+            <input id="importFile" type="file" accept="application/json,.json" hidden>
+          </label>
+          <button id="resetBtn" class="danger">Delete all data</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Rates used</h2>
+        <p class="muted small">Years marked “check” use figures that should be confirmed on revenue.ie. Figures live in <code>tax.js</code>.</p>
+        <div class="scroll"><table class="tbl" id="ratesTable"></table></div>
+      </div>
+      <div class="card">
+        <h2>What this does not cover</h2>
+        <ul class="small">
+          <li>USC and PRSI (credits and reliefs don't reduce them).</li>
+          <li>Self-assessed (Form 11) income, rental income, Rent-a-Room relief, Help to Buy.</li>
+          <li>Separate or single assessment of married couples, widowed or single-parent credits.</li>
+          <li>Dependent relative credit and other less common credits.</li>
+        </ul>
+        <p class="small muted">This is an estimate to help you organise your claims. It isn't tax advice; check anything sizeable with Revenue or an accountant.</p>
+      </div>
+    </section>
+  </main>
+
+  <script src="tax.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
