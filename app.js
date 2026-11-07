@@ -110,6 +110,7 @@
     check: 'M5 12.5l4 4L19 7',
     shield: 'M12 3.5 5 6v5.5c0 4.2 2.9 7.7 7 9 4.1-1.3 7-4.8 7-9V6zM9 12l2 2 4-4',
     plus: 'M12 5v14M5 12h14',
+    palette: 'M12 3a9 9 0 1 0 0 18c1.1 0 1.8-.9 1.8-1.9 0-.5-.2-.9-.5-1.3-.3-.3-.5-.8-.5-1.3 0-1 .8-1.8 1.8-1.8H17a4 4 0 0 0 4-4C21 6.5 17 3 12 3zM7.5 12h.01M9.5 8h.01M14.5 8h.01M16.5 11.5h.01',
     list: 'M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01',
     help: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .8-1 1.5v.7M12 17h.01',
     more: 'M5 12h.01M12 12h.01M19 12h.01',
@@ -1986,6 +1987,51 @@
     sync.timer = setTimeout(push, 1200);
   }
 
+  // ---------- Appearance: light / dark / system, and accent colour ----------
+  const ACCENTS = ['green', 'blue', 'violet', 'amber'];
+  let hostTheme = window.__hostTheme || null; // what the page was given before our choice
+  let appearance = { mode: 'system', accent: 'green' };
+  try { appearance = Object.assign(appearance, JSON.parse(localStorage.getItem('taxback.appearance') || '{}')); } catch (e) { /* defaults */ }
+
+  function applyAppearance() {
+    const root = document.documentElement;
+    if (appearance.mode === 'light' || appearance.mode === 'dark') root.setAttribute('data-theme', appearance.mode);
+    else if (hostTheme) root.setAttribute('data-theme', hostTheme);
+    else root.removeAttribute('data-theme');
+    if (appearance.accent && appearance.accent !== 'green') root.setAttribute('data-accent', appearance.accent);
+    else root.removeAttribute('data-accent');
+    $$('#modePick .seg').forEach((b) => {
+      const on = b.dataset.mode === appearance.mode;
+      b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on));
+    });
+    $$('#accentPick .swatch').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.accent === appearance.accent)));
+  }
+
+  function setAppearance(change) {
+    appearance = Object.assign({}, appearance, change);
+    try { localStorage.setItem('taxback.appearance', JSON.stringify(appearance)); } catch (e) { /* per-visit only */ }
+    applyAppearance();
+  }
+
+  function initAppearance() {
+    $('#appearanceBtn').append(icon('palette'));
+    const panel = $('#appearancePanel');
+    const btn = $('#appearanceBtn');
+    const open = (on) => { panel.hidden = !on; btn.setAttribute('aria-expanded', String(on)); if (on) $('#modePick .seg.on, #modePick .seg').focus(); };
+    btn.addEventListener('click', () => open(panel.hidden));
+    document.addEventListener('click', (e) => { if (!panel.hidden && !panel.contains(e.target) && !btn.contains(e.target)) open(false); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !panel.hidden) { open(false); btn.focus(); } });
+    $$('#modePick .seg').forEach((b) => b.addEventListener('click', () => setAppearance({ mode: b.dataset.mode })));
+    $$('#accentPick .swatch').forEach((b) => b.addEventListener('click', () => setAppearance({ accent: ACCENTS.includes(b.dataset.accent) ? b.dataset.accent : 'green' })));
+    // If the page around us changes its theme: follow it on "System", keep our choice otherwise.
+    new MutationObserver(() => {
+      const now = document.documentElement.getAttribute('data-theme');
+      if (appearance.mode === 'system') { hostTheme = now; return; }
+      if (now !== appearance.mode) document.documentElement.setAttribute('data-theme', appearance.mode);
+    }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    applyAppearance();
+  }
+
   // ---------- More menu (phones) ----------
   function buildMore() {
     const sheet = $('#moreSheet');
@@ -2139,6 +2185,7 @@
     if (!Tax.YEARS.includes(Number(state.selectedYear))) state.selectedYear = Tax.openYears(new Date()).slice(-1)[0];
     $$('.tabs [data-icon]').forEach((b) => b.prepend(icon(b.dataset.icon)));
     buildMore();
+    initAppearance();
     let lastY = window.scrollY;
     window.addEventListener('scroll', () => {
       const y = window.scrollY;

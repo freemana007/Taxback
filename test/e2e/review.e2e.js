@@ -257,3 +257,52 @@ describe('phone layout', () => {
     await p.context().close();
   });
 });
+
+describe('appearance', () => {
+  it('switches mode and colour, remembers them, and follows the system again', async () => {
+    const p = await newPage({ state: base(), context: { colorScheme: 'light' } });
+    const bg = () => p.evaluate(() => getComputedStyle(document.body).backgroundColor);
+    const accent = () => p.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--accent').trim());
+    assert.equal(await bg(), 'rgb(242, 245, 243)');
+    await p.click('#appearanceBtn');
+    assert.equal(await p.isVisible('#appearancePanel'), true);
+    await p.click('#modePick [data-mode=dark]');
+    assert.equal(await p.getAttribute('html', 'data-theme'), 'dark');
+    assert.equal(await bg(), 'rgb(12, 18, 16)');
+    await p.click('#accentPick [data-accent=blue]');
+    assert.equal(await accent(), '#6ea8ff', 'dark blue accent');
+    assert.equal(await p.getAttribute('#accentPick [data-accent=blue]', 'aria-pressed'), 'true');
+    // remembered after a reload, and applied before the app's code runs
+    await p.reload();
+    assert.equal(await p.getAttribute('html', 'data-theme'), 'dark');
+    assert.equal(await accent(), '#6ea8ff');
+    // light + blue
+    await p.click('#appearanceBtn');
+    await p.click('#modePick [data-mode=light]');
+    assert.equal(await accent(), '#1d5bb8');
+    // the menu closes with Escape
+    await p.keyboard.press('Escape');
+    assert.equal(await p.isVisible('#appearancePanel'), false);
+    // back to System and Green: follows the device (light here)
+    await p.click('#appearanceBtn');
+    await p.click('#modePick [data-mode=system]');
+    await p.click('#accentPick [data-accent=green]');
+    assert.equal(await p.getAttribute('html', 'data-theme'), null);
+    assert.equal(await accent(), '#0d7a5c');
+    assert.equal(await bg(), 'rgb(242, 245, 243)');
+    assert.deepEqual(p.errors, []);
+    await p.context().close();
+  });
+
+  it('keeps the chosen mode if the surrounding page changes theme', async () => {
+    const p = await newPage({ state: base() });
+    await p.click('#appearanceBtn');
+    await p.click('#modePick [data-mode=dark]');
+    await p.evaluate(() => document.documentElement.setAttribute('data-theme', 'light'));
+    await p.waitForFunction(() => document.documentElement.getAttribute('data-theme') === 'dark');
+    await p.click('#modePick [data-mode=system]');
+    await p.evaluate(() => document.documentElement.setAttribute('data-theme', 'light'));
+    assert.equal(await p.getAttribute('html', 'data-theme'), 'light', 'on System it follows the page');
+    await p.context().close();
+  });
+});

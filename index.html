@@ -11,6 +11,18 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+  <script>
+    // Apply the saved colour scheme before anything is drawn, so there's no flash.
+    (function () {
+      var root = document.documentElement;
+      window.__hostTheme = root.getAttribute('data-theme');
+      try {
+        var a = JSON.parse(localStorage.getItem('taxback.appearance') || '{}');
+        if (a.mode === 'light' || a.mode === 'dark') root.setAttribute('data-theme', a.mode);
+        if (a.accent && a.accent !== 'green') root.setAttribute('data-accent', a.accent);
+      } catch (e) { /* use the defaults */ }
+    })();
+  </script>
   <header class="top">
     <div class="brand">
       <span class="logo" aria-hidden="true">
@@ -21,9 +33,30 @@
         <p class="sub">Your Irish tax, sorted</p>
       </div>
     </div>
-    <label class="year-pick"><span>Tax year</span>
-      <select id="yearSelect"></select>
-    </label>
+    <div class="top-actions">
+      <label class="year-pick"><span>Tax year</span>
+        <select id="yearSelect"></select>
+      </label>
+      <button type="button" class="icon-btn" id="appearanceBtn" aria-label="Appearance" title="Appearance"
+        aria-haspopup="dialog" aria-expanded="false" aria-controls="appearancePanel"></button>
+    </div>
+    <div class="appearance" id="appearancePanel" role="dialog" aria-label="Appearance" hidden>
+      <h2>Appearance</h2>
+      <p class="appearance-label" id="modeLabel">Mode</p>
+      <div class="seg-group" role="group" aria-labelledby="modeLabel" id="modePick">
+        <button type="button" class="seg" data-mode="system">System</button>
+        <button type="button" class="seg" data-mode="light">Light</button>
+        <button type="button" class="seg" data-mode="dark">Dark</button>
+      </div>
+      <p class="appearance-label" id="accentLabel">Colour</p>
+      <div class="swatches" role="group" aria-labelledby="accentLabel" id="accentPick">
+        <button type="button" class="swatch" data-accent="green" aria-label="Green"><span class="swatch-dot"></span><span>Green</span></button>
+        <button type="button" class="swatch" data-accent="blue" aria-label="Blue"><span class="swatch-dot"></span><span>Blue</span></button>
+        <button type="button" class="swatch" data-accent="violet" aria-label="Violet"><span class="swatch-dot"></span><span>Violet</span></button>
+        <button type="button" class="swatch" data-accent="amber" aria-label="Amber"><span class="swatch-dot"></span><span>Amber</span></button>
+      </div>
+      <p class="muted small">Saved on this device. “System” follows your phone or computer’s light or dark setting.</p>
+    </div>
   </header>
 
   <div class="shell">

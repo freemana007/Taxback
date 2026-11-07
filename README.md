@@ -21,7 +21,9 @@ year. Home leads with your estimated refund (or a welcome on first visit), your
 progress through six steps with only the next one open, then the breakdown.
 The Income page asks only for pay and tax at first; other questions appear
 when you tap what applies to you. Receipt types are picked from tiles, and each
-receipt you add shows what it saves you.
+receipt you add shows what it saves you. The palette button in the top bar
+sets the colour scheme: System, Light or Dark, and a Green, Blue, Violet or
+Amber accent (all meet WCAG AA contrast), remembered on each device.
 
 - **Start here**: a 6-step walkthrough for people new to tax. It shows which
   step to do next, has yes/no questions to find what you can claim, explains
