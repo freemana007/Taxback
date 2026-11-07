@@ -22,7 +22,8 @@
   </header>
 
   <nav class="tabs" role="tablist">
-    <button role="tab" data-tab="dashboard" aria-selected="true">Overview</button>
+    <button role="tab" data-tab="guide" aria-selected="true">Start here</button>
+    <button role="tab" data-tab="dashboard">Overview</button>
     <button role="tab" data-tab="expenses">Receipts</button>
     <button role="tab" data-tab="profile">Income &amp; settings</button>
     <button role="tab" data-tab="checklist">Checklist</button>
@@ -32,8 +33,32 @@
   <main>
     <div id="deadlineBanner"></div>
 
+    <!-- START HERE -->
+    <section id="tab-guide" class="tab">
+      <div class="card intro">
+        <h2>Get your tax back in 6 steps</h2>
+        <p>Most people who work for an employer pay too much tax because they never claim what they're owed. You don't need to know anything about tax. Follow these steps in order. Each one tells you exactly what to look for and where.</p>
+        <p class="muted small">Working on tax year <strong class="yr"></strong>. Change the year at the top to work on another one.</p>
+      </div>
+      <ol class="steps" id="guideSteps"></ol>
+      <div class="card" id="quizCard">
+        <h2>What can I claim?</h2>
+        <p class="muted small">Answer yes or no. Every “yes” is money you can probably get back.</p>
+        <ul class="quiz" id="quiz"></ul>
+      </div>
+      <div class="card">
+        <h2>How to claim on myAccount</h2>
+        <p class="muted small">myAccount is Revenue's free website. Claiming takes about 15 minutes once you have your numbers.</p>
+        <ol class="claim-steps" id="claimSteps"></ol>
+      </div>
+      <div class="card">
+        <h2>Words you'll see</h2>
+        <dl class="glossary" id="glossary"></dl>
+      </div>
+    </section>
+
     <!-- OVERVIEW -->
-    <section id="tab-dashboard" class="tab">
+    <section id="tab-dashboard" class="tab" hidden>
       <div class="stats" id="stats"></div>
       <div class="grid2">
         <div class="card">
@@ -62,7 +87,8 @@
             <select name="category" id="catSelect" required></select>
           </label>
           <label>Amount (€)
-            <input name="amount" type="number" step="0.01" min="0" required inputmode="decimal">
+            <input name="amount" id="amountInput" type="text" required inputmode="decimal" autocomplete="off" placeholder="e.g. 60 or 60 + 45 + 120">
+            <span class="amount-total" id="amountTotal"></span>
           </label>
           <label>Date
             <input name="date" type="date" required>
@@ -76,6 +102,13 @@
           <label class="wide">Description
             <input name="description" type="text" placeholder="e.g. Dr Murphy, physio, Bord Gáis bill" maxlength="120">
           </label>
+          <label class="med-only" hidden>Who pays it?
+            <select name="paidBy" id="paidBySelect">
+              <option value="">Choose…</option>
+              <option value="employer">My employer pays it</option>
+              <option value="self">I pay it myself</option>
+            </select>
+          </label>
           <label class="med-only" hidden>Adults covered
             <input name="adults" type="number" min="0" step="1" value="1">
           </label>
@@ -85,7 +118,9 @@
           <label class="check tuition-only" hidden>
             <input name="partTime" type="checkbox"> Part-time course
           </label>
-          <p class="hint wide" id="catHint"></p>
+          <p class="notice wide" id="medSelfNotice" hidden>You pay this yourself, so your insurer already took 20% off the price. There is nothing more to claim, and you don't need to add it.</p>
+          <div class="calc wide rent-only" id="rentCalc" hidden></div>
+          <div class="cat-guide wide" id="catGuide"></div>
           <div class="wide actions">
             <button type="submit" class="primary" id="expSubmit">Add receipt</button>
             <button type="button" id="expCancel" hidden>Cancel edit</button>
@@ -120,12 +155,12 @@
           <label class="spouse-only">Spouse's date of birth
             <input name="spouseDob" type="date">
           </label>
-          <p class="hint wide">Date of birth sets your pension relief limit (15% under 30, up to 40% at 60+).</p>
+          
         </form>
       </div>
       <div class="card">
         <h2>Tax year <span class="yr"></span></h2>
-        <p class="muted small">Find these on myAccount → PAYE Services → Review your tax → Employment Detail Summary.</p>
+        <p class="muted small">Not sure where a number comes from? Open “Where do I find this?” under it. Changes save as you type.</p>
         <form id="yearForm" class="form">
           <label>Your gross pay (€)
             <input name="youGross" type="number" step="0.01" min="0" inputmode="decimal">
@@ -151,7 +186,7 @@
           <label class="spouse-only carer-only">Home carer's own income (€)
             <input name="carerIncome" type="number" step="0.01" min="0" inputmode="decimal">
           </label>
-          <p class="hint wide">Gross pay should be pay for income tax purposes (after pension contributions made through payroll). Leave tax paid empty if you just want to see what your claims are worth.</p>
+          
         </form>
       </div>
     </section>
@@ -201,6 +236,7 @@
   </main>
 
   <script src="tax.js"></script>
+  <script src="guide.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

@@ -139,3 +139,13 @@ test('4-year claim deadline', () => {
   assert.deepEqual(Tax.openYears(new Date(2026, 10, 7)), [2022, 2023, 2024, 2025, 2026]);
   assert.deepEqual(Tax.openYears(new Date(2027, 0, 2)), [2023, 2024, 2025, 2026, 2027]);
 });
+
+test('medical insurance you pay yourself is not claimed again', () => {
+  const r = Tax.computeYear(single(60000, {
+    expenses: [
+      { year: 2025, category: 'medicalInsurance', amount: 1500, adults: 1, paidBy: 'self' },
+      { year: 2025, category: 'medicalInsurance', amount: 800, adults: 1, paidBy: 'employer' },
+    ],
+  }));
+  assert.equal(r.credits.medicalInsurance, 160);
+});

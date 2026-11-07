@@ -78,7 +78,7 @@
     health: { label: 'Health expenses', kind: 'credit',
       hint: 'GP, consultant, prescriptions, physio, non-routine dental (crowns, root canal). Not routine dental, optical or cosmetic.' },
     medicalInsurance: { label: 'Medical insurance', kind: 'credit',
-      hint: 'Gross premium. 20% relief capped at €1,000 per adult and €500 per child. Claim even if your employer pays.' },
+      hint: 'Only premiums your employer pays for you. If you pay it yourself, the insurer already took 20% off. Capped at €1,000 per adult and €500 per child.' },
     rent: { label: 'Rent (your home)', kind: 'credit',
       hint: 'Rent paid on your main residence. Credit is 20% of rent up to the yearly maximum.' },
     tuition: { label: 'Tuition fees', kind: 'credit',
@@ -86,7 +86,7 @@
     mortgageInterest: { label: 'Mortgage interest', kind: 'credit',
       hint: 'Interest paid in the year. Relief is 20% of the increase over 2022 interest (set 2022 interest in the year settings).' },
     pension: { label: 'Pension (AVC / PRSA)', kind: 'deduction',
-      hint: 'Personal contributions. Relief at your marginal rate within the age-related limit.' },
+      hint: 'Contributions you pay directly to a pension provider. Not ones taken from your wages (those already get relief).' },
     remoteWorking: { label: 'Remote working bills', kind: 'deduction',
       hint: 'Electricity, heating and broadband bills. 30% of cost x days worked from home / days in year.' },
     nursingHome: { label: 'Nursing home fees', kind: 'deduction',
@@ -231,7 +231,10 @@
     const health = sum(expensesFor(all, year, 'health').map((e) => e.amount));
     credits.health = skip('health') ? 0 : health * STANDARD_RATE;
 
-    const medEligible = sum(expensesFor(all, year, 'medicalInsurance').map((e) => {
+    // Premiums you pay yourself already get 20% off at source from the insurer,
+    // so only employer-paid premiums (a benefit-in-kind) are claimed from Revenue.
+    const medEligible = sum(expensesFor(all, year, 'medicalInsurance')
+      .filter((e) => e.paidBy !== 'self').map((e) => {
       const adults = e.adults == null || e.adults === '' ? 1 : num(e.adults);
       const children = num(e.children);
       const cap = adults * MED_INSURANCE_CAP_ADULT + children * MED_INSURANCE_CAP_CHILD;

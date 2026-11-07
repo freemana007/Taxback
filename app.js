@@ -204,8 +204,11 @@
 
   function updateFormForCategory() {
     const cat = $('#catSelect').value;
-    $('#catHint').textContent = Tax.CATEGORIES[cat].hint;
+    if ($('#catGuide').dataset.cat !== cat) renderCatGuide(cat);
     $$('.med-only').forEach((n) => { n.hidden = cat !== 'medicalInsurance'; });
+    $$('.rent-only').forEach((n) => { n.hidden = cat !== 'rent'; });
+    $('#medSelfNotice').hidden = !(cat === 'medicalInsurance' && $('#paidBySelect').value === 'self');
+    $('#paidBySelect').required = cat === 'medicalInsurance';
     $$('.tuition-only').forEach((n) => { n.hidden = cat !== 'tuition'; });
     const perPerson = cat === 'pension';
     $$('.person-field').forEach((n) => { n.hidden = !married(); });
@@ -225,14 +228,22 @@
     f.date.value = defaultDateFor(Number(state.selectedYear));
     $('#expSubmit').textContent = 'Add receipt';
     $('#expCancel').hidden = true;
+    updateAmountTotal();
     updateFormForCategory();
   }
 
   function onExpenseSubmit(e) {
     e.preventDefault();
     const f = e.target;
-    const amount = Number(f.amount.value);
-    if (!(amount > 0)) { f.amount.focus(); return; }
+    const amount = parseAmount(f.amount.value);
+    if (!(amount > 0)) {
+      $('#amountTotal').textContent = 'Enter an amount in euro, like 60 or 60 + 45.';
+      $('#amountTotal').classList.add('error');
+      f.amount.focus(); return;
+    }
+    if (f.category.value === 'medicalInsurance' && f.paidBy.value === 'self') {
+      $('#medSelfNotice').hidden = false; $('#medSelfNotice').scrollIntoView({ block: 'nearest' }); return;
+    }
     const date = f.date.value;
     const item = {
       id: editingId || uid(),
@@ -246,6 +257,7 @@
     if (item.category === 'medicalInsurance') {
       item.adults = Number(f.adults.value) || 0;
       item.children = Number(f.children.value) || 0;
+      item.paidBy = f.paidBy.value || 'employer';
     }
     if (item.category === 'tuition') item.partTime = f.partTime.checked;
     if (editingId) {
@@ -270,6 +282,8 @@
     f.adults.value = item.adults == null ? 1 : item.adults;
     f.children.value = item.children || 0;
     f.partTime.checked = !!item.partTime;
+    f.paidBy.value = item.category === 'medicalInsurance' ? (item.paidBy || 'employer') : '';
+    updateAmountTotal();
     $('#expSubmit').textContent = 'Save changes';
     $('#expCancel').hidden = false;
     updateFormForCategory();
@@ -304,7 +318,7 @@
             el('span', { class: 'item-meta', text: [
               e.date ? fmtDate.format(new Date(e.date)) : '',
               married() ? (e.person === 'spouse' ? 'Spouse' : 'You') : '',
-              e.category === 'medicalInsurance' ? `${e.adults ?? 1} adult(s), ${e.children || 0} child(ren)` : '',
+              e.category === 'medicalInsurance' ? `${e.adults ?? 1} adult(s), ${e.children || 0} child(ren)${e.paidBy === 'self' ? ', paid by you (not claimable)' : ', paid by employer'}` : '',
               e.category === 'tuition' ? (e.partTime ? 'Part-time' : 'Full-time') : '',
             ].filter(Boolean).join(' · ') }),
           ]),
@@ -524,6 +538,263 @@
     reader.readAsText(file);
   }
 
+  // ---------- Plain-language guide ----------
+
+  // Turns "**bold** text" into nodes without using innerHTML.
+  function rich(text) {
+    const out = [];
+    String(text).split(/(\*\*[^*]+\*\*)/).forEach((part) => {
+      if (!part) return;
+      if (part.startsWith('**')) out.push(el('strong', { text: part.slice(2, -2) }));
+      else out.push(document.createTextNode(part));
+    });
+    return out;
+  }
+
+  function parseAmount(str) {
+    const clean = String(str || '').replace(/[€\s]/g, '').replace(/,(?=\d{3}(\D|$))/g, '');
+    if (!clean) return NaN;
+    const parts = clean.split('+');
+    let total = 0;
+    for (const p of parts) {
+      if (!/^\d+(\.\d+)?$/.test(p)) return NaN;
+      total += Number(p);
+    }
+    return Math.round(total * 100) / 100;
+  }
+
+  function updateAmountTotal() {
+    const raw = $('#amountInput').value;
+    const out = $('#amountTotal');
+    out.classList.remove('error');
+    if (raw.includes('+')) {
+      const v = parseAmount(raw);
+      out.textContent = Number.isNaN(v) ? 'Use numbers and + only, like 60 + 45.' : `Total: ${eur.format(v)}`;
+      out.classList.toggle('error', Number.isNaN(v));
+    } else {
+      out.textContent = 'Several bills? Type them with + between, e.g. 85 + 120.';
+    }
+  }
+
+  // A small "a × b = result, use it" calculator.
+  function multiplyCalc(opts) {
+    const a = el('input', { type: 'number', min: '0', step: 'any', inputmode: 'decimal', id: opts.id + 'A', value: opts.aDefault ?? '' });
+    const b = el('input', { type: 'number', min: '0', step: 'any', inputmode: 'decimal', id: opts.id + 'B', value: opts.bDefault ?? '' });
+    const result = el('output', { class: 'calc-result' });
+    const use = el('button', { type: 'button', class: 'small-btn', text: 'Use this number', disabled: true });
+    let value = 0;
+    const update = () => {
+      value = opts.compute(Number(a.value) || 0, Number(b.value) || 0);
+      result.textContent = value > 0 ? '= ' + opts.format(value) : '';
+      use.disabled = !(value > 0);
+    };
+    a.addEventListener('input', update); b.addEventListener('input', update);
+    use.addEventListener('click', () => opts.use(value));
+    update();
+    return el('div', { class: 'calc-box' }, [
+      el('p', { class: 'calc-title', text: opts.title }),
+      el('div', { class: 'calc-row' }, [
+        el('label', { for: a.id }, [opts.aLabel, a]),
+        el('span', { class: 'calc-op', text: opts.op || '×' }),
+        el('label', { for: b.id }, [opts.bLabel, b]),
+        result, use,
+      ]),
+    ]);
+  }
+
+  function setYearField(name, value) {
+    const f = $('#yearForm');
+    f[name].value = value;
+    f.dispatchEvent(new Event('change'));
+    f[name].focus();
+  }
+
+  const FIELD_CALCS = {
+    annualise: () => multiplyCalc({
+      id: 'calcAnnual', title: 'Estimate a full year from your latest payslip',
+      aLabel: 'Taxable pay to date (€)', bLabel: 'Months paid so far', op: '÷ months × 12',
+      bDefault: new Date().getMonth() + 1,
+      compute: (a, b) => (b > 0 ? Math.round((a / b) * 12) : 0),
+      format: (v) => eur0.format(v),
+      use: (v) => setYearField('youGross', v),
+    }),
+    wfhDays: () => multiplyCalc({
+      id: 'calcWfh', title: 'Work out your days at home',
+      aLabel: 'Weeks you worked', bLabel: 'Days a week at home', aDefault: 46,
+      compute: (a, b) => Math.min(366, Math.round(a * Math.min(b, 7))),
+      format: (v) => `${v} days`,
+      use: (v) => setYearField('wfhDays', v),
+    }),
+  };
+
+  function helpBlock(g, key) {
+    const parts = [];
+    (g.steps ? [el('ol', { class: 'help-steps' }, g.steps.map((t) => el('li', {}, rich(t))))] : []).forEach((n) => parts.push(n));
+    (g.body || []).forEach((t) => parts.push(el('p', {}, rich(t))));
+    if (g.calc && FIELD_CALCS[g.calc]) parts.push(FIELD_CALCS[g.calc]());
+    return el('details', { class: 'help', 'data-help': key }, [
+      el('summary', { text: g.title || 'Where do I find this?' }),
+      el('div', { class: 'help-body' }, parts),
+    ]);
+  }
+
+  // Wraps each field in Income & settings with its help box.
+  function attachFieldHelp() {
+    Object.entries(Guide.FIELDS).forEach(([name, g]) => {
+      const input = $(`#profileForm [name=${name}], #yearForm [name=${name}]`);
+      if (!input) return;
+      const label = input.closest('label');
+      const wrap = el('div', { class: 'field ' + label.className });
+      label.className = label.classList.contains('check') ? 'check' : '';
+      label.replaceWith(wrap);
+      wrap.append(label, helpBlock(g, name));
+    });
+  }
+
+  function renderCatGuide(cat) {
+    const g = Guide.CATEGORIES[cat];
+    const box = $('#catGuide');
+    box.dataset.cat = cat;
+    if (!g) { box.replaceChildren(el('p', { class: 'hint', text: Tax.CATEGORIES[cat].hint })); return; }
+    const list = (items, cls) => el('ul', { class: cls }, items.map((t) => el('li', {}, rich(t))));
+    box.replaceChildren(
+      el('h3', { text: `About ${Tax.CATEGORIES[cat].label.toLowerCase()}` }),
+      el('div', { class: 'cg-grid' }, [
+        el('div', {}, [el('h4', { text: 'Counts' }), list(g.counts, 'yes-list')]),
+        el('div', {}, [el('h4', { text: 'Doesn’t count' }), list(g.notCounts, 'no-list')]),
+      ]),
+      el('h4', { text: 'Where to find the amount' }),
+      el('ol', { class: 'help-steps' }, g.find.map((t) => el('li', {}, rich(t)))),
+      el('h4', { text: 'How to work it out' }),
+      el('p', {}, rich(g.calc)),
+      el('p', { class: 'muted small' }, rich(g.keep)),
+    );
+  }
+
+  function buildRentCalc() {
+    $('#rentCalc').replaceChildren(multiplyCalc({
+      id: 'calcRent', title: 'Work out a year of rent',
+      aLabel: 'Monthly rent (€)', bLabel: 'Months paid this year', bDefault: 12,
+      compute: (a, b) => Math.round(a * b * 100) / 100,
+      format: (v) => eur.format(v),
+      use: (v) => { $('#amountInput').value = v; updateAmountTotal(); $('#amountInput').focus(); },
+    }));
+  }
+
+  function goTo(tab, focusSel) {
+    showTab(tab);
+    window.scrollTo({ top: 0 });
+    if (focusSel) {
+      const n = $(focusSel);
+      if (n) { n.focus({ preventScroll: true }); n.scrollIntoView({ block: 'center' }); }
+    }
+  }
+
+  function addReceipt(cat) {
+    resetExpenseForm();
+    $('#catSelect').value = cat;
+    updateFormForCategory();
+    goTo('expenses', '#amountInput');
+  }
+
+  function renderGuide() {
+    const y = Number(state.selectedYear);
+    const yd = state.years[y] || {};
+    const receipts = state.expenses.filter((e) => Number(e.year) === y).length;
+    const total = Tax.claimValues(inputFor(y)).total;
+    const claimedKey = `${y}:claimed`;
+    const steps = [
+      {
+        title: 'Tell us about you',
+        text: 'Are you single or married, and when were you born? Two quick answers.',
+        need: 'Nothing',
+        done: !!state.profile.youDob,
+        action: ['Answer 2 questions', () => goTo('profile', '#profileForm [name=status]')],
+      },
+      {
+        title: `Find your pay and tax for ${y}`,
+        text: 'Two numbers: how much you earned, and how much income tax was taken. Both are on one page in Revenue’s myAccount, or on your last payslip of the year.',
+        need: 'myAccount login, or your December payslip',
+        done: yd.youGross > 0,
+        action: ['Enter pay and tax', () => goTo('profile', '#yearForm [name=youGross]')],
+      },
+      {
+        title: 'Find what you can claim',
+        text: 'Answer the yes/no questions below. Each “yes” is a type of receipt to add.',
+        need: 'A couple of minutes',
+        done: receipts > 0 || Guide.QUIZ.some(([cat]) => state.checklist[`${y}:quiz:${cat}`]),
+        action: ['Show the questions', () => $('#quizCard').scrollIntoView({ behavior: 'smooth' })],
+      },
+      {
+        title: 'Add your receipts',
+        text: 'For each thing you paid for, add the amount. The app tells you where to find each one and adds up bills for you.',
+        need: 'Receipts, bills, bank statements',
+        done: receipts > 0,
+        action: ['Add a receipt', () => goTo('expenses', '#catSelect')],
+      },
+      {
+        title: 'See what you’re owed',
+        text: 'The Overview shows what each claim is worth and your likely refund.',
+        need: 'Nothing',
+        done: total > 0,
+        action: ['Open Overview', () => goTo('dashboard')],
+      },
+      {
+        title: 'Claim it from Revenue',
+        text: 'Copy your totals into myAccount. The steps are below. Tick this when you’ve sent it.',
+        need: 'myAccount login',
+        done: !!state.checklist[claimedKey],
+        action: ['Show how to claim', () => $('#claimSteps').scrollIntoView({ behavior: 'smooth' })],
+        tick: claimedKey,
+      },
+    ];
+    const next = steps.findIndex((s) => !s.done);
+    $('#guideSteps').replaceChildren(...steps.map((s, i) => {
+      const status = s.done ? 'done' : i === next ? 'next' : 'todo';
+      const btn = el('button', { type: 'button', class: status === 'next' ? 'primary' : '', text: s.action[0], onclick: s.action[1] });
+      const extra = s.tick ? el('label', { class: 'check tick' }, [
+        el('input', { type: 'checkbox', checked: !!state.checklist[s.tick], onchange: (e) => {
+          state.checklist[s.tick] = e.target.checked; save(); renderAll();
+        } }), `I’ve claimed for ${y}`,
+      ]) : null;
+      return el('li', { class: 'step ' + status }, [
+        el('span', { class: 'step-num', 'aria-hidden': 'true', text: s.done ? '✓' : String(i + 1) }),
+        el('div', { class: 'step-body' }, [
+          el('div', { class: 'step-head' }, [
+            el('h3', { text: s.title }),
+            el('span', { class: 'chip ' + status, text: status === 'done' ? 'Done' : status === 'next' ? 'Do this next' : 'To do' }),
+          ]),
+          el('p', { text: s.text }),
+          el('p', { class: 'muted small', text: 'You’ll need: ' + s.need }),
+          el('div', { class: 'actions' }, [btn].concat(extra ? [extra] : [])),
+        ]),
+      ]);
+    }));
+
+    $('#quiz').replaceChildren(...Guide.QUIZ.map(([cat, q]) => {
+      const key = `${y}:quiz:${cat}`;
+      const ans = state.checklist[key];
+      const count = state.expenses.filter((e) => Number(e.year) === y && e.category === cat).length;
+      const choose = (v) => () => { state.checklist[key] = v; save(); renderGuide(); };
+      return el('li', { class: 'quiz-item' + (ans === 'yes' ? ' yes' : ans === 'no' ? ' no' : '') }, [
+        el('p', { class: 'quiz-q', text: q }),
+        el('div', { class: 'quiz-a' }, [
+          el('button', { type: 'button', class: 'seg' + (ans === 'yes' ? ' on' : ''), 'aria-pressed': String(ans === 'yes'), text: 'Yes', onclick: choose('yes') }),
+          el('button', { type: 'button', class: 'seg' + (ans === 'no' ? ' on' : ''), 'aria-pressed': String(ans === 'no'), text: 'No', onclick: choose('no') }),
+          ans === 'yes' ? el('button', { type: 'button', class: 'primary', text: count ? `Add another (${count} added)` : `Add ${Tax.CATEGORIES[cat].label.toLowerCase()}`, onclick: () => addReceipt(cat) }) : '',
+        ]),
+      ]);
+    }));
+  }
+
+  function renderGuideStatic() {
+    $('#claimSteps').replaceChildren(...Guide.CLAIM_STEPS.map((s) => el('li', {}, [
+      el('strong', { text: s.title }),
+      el('p', {}, rich(s.text).concat(s.link ? [' ', el('a', { href: s.link, target: '_blank', rel: 'noopener', text: 'Open myAccount' })] : [])),
+    ])));
+    $('#glossary').replaceChildren(...Guide.GLOSSARY.flatMap(([t, d]) => [el('dt', { text: t }), el('dd', { text: d })]));
+  }
+
   // ---------- Navigation ----------
   function showTab(name) {
     $$('.tabs [role=tab]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === name)));
@@ -545,6 +816,7 @@
     renderExpenses();
     renderProfile();
     renderChecklist();
+    renderGuide();
     updateFormForCategory();
   }
 
@@ -553,6 +825,11 @@
     if (!Tax.YEARS.includes(Number(state.selectedYear))) state.selectedYear = Tax.openYears(new Date()).slice(-1)[0];
     renderCategoryOptions();
     renderRates();
+    attachFieldHelp();
+    buildRentCalc();
+    renderGuideStatic();
+    $('#amountInput').addEventListener('input', updateAmountTotal);
+    $('#paidBySelect').addEventListener('change', updateFormForCategory);
     $('#yearSelect').addEventListener('change', (e) => selectYear(e.target.value));
     $$('.tabs [role=tab]').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
     $('#catSelect').addEventListener('change', updateFormForCategory);
@@ -573,7 +850,8 @@
         setStatus('All data deleted.');
       });
     });
-    let tab = 'dashboard';
+    const hasData = state.expenses.length > 0 || Object.keys(state.years).length > 0;
+    let tab = hasData ? 'dashboard' : 'guide';
     try { tab = sessionStorage.getItem('taxback.tab') || tab; } catch (e) { /* ignore */ }
     showTab(tab);
     resetExpenseForm();

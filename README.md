@@ -14,6 +14,16 @@ Or serve it locally: `npm start`, then visit http://localhost:8080.
 
 ## What it does
 
+- **Start here**: a 6-step walkthrough for people new to tax. It shows which
+  step to do next, has yes/no questions to find what you can claim, explains
+  how to claim on Revenue's myAccount, and lists plain-English meanings of tax words.
+- **Help on every field**: "Where do I find this?" boxes say exactly where each
+  number is (myAccount page, payslip line, bank statement), with calculators
+  for a full year's pay, days worked from home and a year of rent.
+- **Receipt guides**: for each type of receipt, what counts, what doesn't,
+  where to find the amount and how to work it out. The amount box adds up
+  several bills typed as `85 + 120 + 60`.
+
 - **Overview**: the value of your claims, an estimated refund (once you enter
   tax paid from your Employment Detail Summary), a full income tax calculation,
   and every open year with its deadline. A banner warns when the oldest open
@@ -33,12 +43,12 @@ Or serve it locally: `npm start`, then visit http://localhost:8080.
 | Relief | Treatment |
 | --- | --- |
 | Health expenses | 20% credit |
-| Medical insurance | 20% credit on premium up to €1,000 per adult, €500 per child |
+| Medical insurance | Employer-paid premiums only (self-paid ones already get 20% off at source): 20% credit up to €1,000 per adult, €500 per child |
 | Rent tax credit | 20% of rent, capped per year (€1,000 single / €2,000 couple for 2024–26) |
 | Tuition fees | 20% of fees (max €7,000 per course) less €3,000 / €1,500 disregard |
 | Mortgage interest | 20% of the increase over 2022 interest, capped per year |
 | Home carer | Fixed credit, reduced by half the carer's income over €7,200 |
-| Pension AVC / PRSA | Deduction within 15%–40% age limit of earnings up to €115,000 |
+| Pension AVC / PRSA (paid outside payroll) | Deduction within 15%–40% age limit of earnings up to €115,000 |
 | Remote working | Deduction of 30% × bills × days WFH / days in year |
 | Nursing home, flat rate expenses | Deduction |
 
@@ -46,7 +56,7 @@ Credits come off your tax bill directly. Deductions reduce taxable income, so
 they are worth 20% or 40% depending on your marginal rate. Each claim's value is
 the difference in tax with and without it.
 
-Rates live in `tax.js` (`RATES`). Years flagged "check" (2026 and 2027) use
+Rates live in `tax.js` (`RATES`). Help text lives in `guide.js`. Years flagged "check" (2026 and 2027) use
 budget figures that should be confirmed on revenue.ie.
 
 ## Not covered
@@ -56,6 +66,11 @@ Help to Buy, separate assessment, and less common credits (dependent relative,
 single person child carer, etc.).
 
 This is an estimate to help organise claims, not tax advice.
+
+## Web-link version
+
+`npm run build` bundles everything into `dist/taxback.html`, a single page used
+for the hosted link.
 
 ## Tests
 

@@ -1,4 +1,4 @@
-// Bundles index.html, styles.css, tax.js and app.js into one self-contained
+// Bundles index.html, styles.css, tax.js, guide.js and app.js into one self-contained
 // page body at dist/taxback.html (used for the hosted web-link version).
 const fs = require('fs');
 const path = require('path');
@@ -8,7 +8,7 @@ const read = (f) => fs.readFileSync(path.join(root, f), 'utf8');
 
 const html = read('index.html');
 const css = read('styles.css');
-const js = ['tax.js', 'app.js'].map(read);
+const js = ['tax.js', 'guide.js', 'app.js'].map(read);
 js.concat(css).forEach((src) => {
   if (/<\/(script|style)/i.test(src)) throw new Error('Source contains a closing script/style tag');
 });
@@ -26,6 +26,7 @@ const out = [
   body.trim(),
   `<script>\n${js[0]}</script>`,
   `<script>\n${js[1]}</script>`,
+  `<script>\n${js[2]}</script>`,
   '',
 ].join('\n');
 
