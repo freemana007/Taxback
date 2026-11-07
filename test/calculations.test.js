@@ -182,3 +182,30 @@ test('claim deadlines', () => {
   assert.equal(Tax.daysUntil(Tax.claimDeadline(2022), now), 55);
   assert.equal(Tax.claimDeadline(2025).toDateString(), new Date(2029, 11, 31).toDateString());
 });
+
+test('taxable social welfare is taxed but earns no employee credit', () => {
+  // 30,000 pay + 10,000 Illness Benefit = 40,000 @20% = 8,000 − (2,000 + 2,000) = 4,000
+  const a = Tax.computeYear(single(2025, 30000, [], { people: { you: { gross: 30000, welfare: 10000 } } }));
+  assert.equal(a.totalGross, 40000);
+  assert.equal(a.liability, 4000);
+  // 5,000 pay + 20,000 State Pension: 25,000 @20% = 5,000; employee credit only 20% × 5,000 = 1,000
+  const b = Tax.computeYear(single(2025, 5000, [], { people: { you: { gross: 5000, welfare: 20000 } } }));
+  assert.equal(b.credits.employee, 1000);
+  assert.equal(b.liability, 2000);
+  // leaving welfare out would have overstated a refund by 2,000 here
+  assert.equal(Tax.computeYear(single(2025, 30000)).liability, 2000);
+});
+
+test('married band increase counts the lower earner’s social welfare', () => {
+  // spouse has 15,000 Maternity Benefit and no pay → band 53,000 + 15,000
+  const r = Tax.computeYear({ year: 2025, status: 'married', expenses: [],
+    people: { you: { gross: 60000 }, spouse: { gross: 0, welfare: 15000 } } });
+  assert.equal(r.band, 68000);
+  assert.equal(r.credits.employee, 2000);
+});
+
+test('pension limit is based on pay from work, not social welfare', () => {
+  // age 40 → 25% of 10,000 pay = 2,500, even with 30,000 welfare
+  const r = Tax.computeYear(single(2025, 10000, [exp(2025, 'pension', 5000)], { people: { you: { gross: 10000, welfare: 30000, dob: '1985-06-01' } } }));
+  assert.equal(r.deductions.pension, 2500);
+});

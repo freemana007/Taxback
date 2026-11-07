@@ -55,8 +55,8 @@
       year: y,
       status: state.profile.status,
       people: {
-        you: { gross: yd.youGross, taxPaid: yd.youTaxPaid, dob: state.profile.youDob },
-        spouse: { gross: yd.spouseGross, taxPaid: yd.spouseTaxPaid, dob: state.profile.spouseDob },
+        you: { gross: yd.youGross, taxPaid: yd.youTaxPaid, welfare: yd.youWelfare, dob: state.profile.youDob },
+        spouse: { gross: yd.spouseGross, taxPaid: yd.spouseTaxPaid, welfare: yd.spouseWelfare, dob: state.profile.spouseDob },
       },
       settings: {
         wfhDays: yd.wfhDays,
@@ -149,6 +149,20 @@
       el('div', { class: 'stat-note', text: s.note }),
     ])));
 
+    // A refund estimate for a year that isn't over only works if pay and tax
+    // are both full-year estimates (or both figures to date).
+    const yd = state.years[y] || {};
+    const running = y >= new Date().getFullYear() && base.hasTaxPaid && !(yd.payMode === 'month' && yd.project);
+    const note = $('#yearNote');
+    note.hidden = !running;
+    if (running) {
+      note.replaceChildren(el('strong', { text: `${y} isn’t over yet. ` }),
+        'This refund is only right if your pay and tax paid are both full-year estimates. ',
+        el('a', { href: '#', text: 'Estimate both from your latest payslip', onclick: (e) => {
+          e.preventDefault(); goTo('profile'); const d = $('[data-help=youGross]'); d.open = true; d.scrollIntoView({ block: 'center' });
+        } }), '.');
+    }
+
     const claimRows = Object.entries(values).filter(([, v]) => v > 0)
       .sort((a, b) => b[1] - a[1])
       .map(([k, v]) => ({ cells: [CLAIM_LABELS[k], eur.format(v)] }));
@@ -166,9 +180,11 @@
       rows($('#claimTable'), claimRows);
     }
 
-    const calc = [
-      { cells: ['Gross income', eur.format(base.totalGross)] },
-    ];
+    const calc = base.totalWelfare
+      ? [{ cells: ['Pay from work', eur.format(base.totalGross - base.totalWelfare)] },
+        { cells: ['Taxable social welfare', eur.format(base.totalWelfare)] },
+        { cells: ['Total income', eur.format(base.totalGross)], cls: 'sub' }]
+      : [{ cells: ['Gross income', eur.format(base.totalGross)] }];
     Object.entries(base.deductions).forEach(([k, v]) => { if (v) calc.push({ cells: ['less ' + CLAIM_LABELS[k], '−' + eur.format(v)] }); });
     calc.push({ cells: ['Taxable income', eur.format(base.taxable)], cls: 'sub' });
     calc.push({ cells: [`20% on first ${eur0.format(Math.min(base.taxable, base.band))}`, eur.format(Math.min(base.taxable, base.band) * 0.2)] });
@@ -350,7 +366,7 @@
     $$('.yr').forEach((n) => { n.textContent = y; });
     const yf = $('#yearForm');
     const yd = state.years[y] || {};
-    ['youGross', 'youTaxPaid', 'spouseGross', 'spouseTaxPaid', 'wfhDays', 'mortgageInterest2022', 'carerIncome']
+    ['youGross', 'youTaxPaid', 'youWelfare', 'spouseGross', 'spouseTaxPaid', 'spouseWelfare', 'wfhDays', 'mortgageInterest2022', 'carerIncome']
       .forEach((k) => { if (document.activeElement !== yf[k]) yf[k].value = yd[k] ?? ''; });
     yf.homeCarer.checked = !!yd.homeCarer;
     $$('.spouse-only').forEach((n) => { n.hidden = !married(); });
@@ -364,6 +380,7 @@
     $('#modeMonth').classList.toggle('on', monthly); $('#modeMonth').setAttribute('aria-pressed', String(monthly));
     $('#monthsBox').hidden = !monthly;
     if (monthly) renderMonths();
+    syncAutoMonths();
   }
 
   // ---------- Month-by-month pay ----------
@@ -593,7 +610,7 @@
   function onYearChange(e) {
     const f = e.currentTarget;
     const yd = yearData(Number(state.selectedYear));
-    ['youGross', 'youTaxPaid', 'spouseGross', 'spouseTaxPaid', 'wfhDays', 'mortgageInterest2022', 'carerIncome']
+    ['youGross', 'youTaxPaid', 'youWelfare', 'spouseGross', 'spouseTaxPaid', 'spouseWelfare', 'wfhDays', 'mortgageInterest2022', 'carerIncome']
       .forEach((k) => { yd[k] = f[k].value === '' ? '' : Number(f[k].value); });
     yd.homeCarer = f.homeCarer.checked;
     save(); renderAll();
@@ -858,15 +875,59 @@
     f[name].focus();
   }
 
+  // Turns "so far this year" payslip figures into full-year estimates,
+  // scaling pay and tax together so they stay comparable.
+  function ytdCalc(person) {
+    const id = person === 'you' ? 'calcYtd' : 'calcYtdSp';
+    const field = (sfx, label) => el('label', { for: id + sfx }, [label,
+      el('input', { type: 'number', min: '0', step: 'any', inputmode: 'decimal', id: id + sfx })]);
+    const pay = field('Pay', 'Taxable pay to date (€)');
+    const tax = field('Tax', 'Income tax (PAYE) to date (€)');
+    const months = field('Months', 'Months paid so far');
+    const monthsInput = months.querySelector('input');
+    monthsInput.classList.add('auto-months');
+    const result = el('output', { class: 'calc-result' });
+    const use = el('button', { type: 'button', class: 'small-btn', text: 'Use these numbers', disabled: true });
+    let est = null;
+    const val = (lab) => Number(lab.querySelector('input').value) || 0;
+    const update = () => {
+      const m = Math.min(val(months), 12);
+      const p = val(pay);
+      const t = val(tax);
+      est = m > 0 && p > 0 ? { pay: Math.round((p / m) * 12 * 100) / 100, tax: Math.round((t / m) * 12 * 100) / 100 } : null;
+      result.textContent = est ? `Full year: pay ${eur0.format(est.pay)}, tax ${eur0.format(est.tax)}` : '';
+      use.disabled = !est;
+    };
+    [pay, tax, months].forEach((l) => l.querySelector('input').addEventListener('input', update));
+    monthsInput.addEventListener('input', (e) => { if (e.isTrusted) monthsInput.classList.remove('auto-months'); });
+    use.addEventListener('click', () => {
+      const f = $('#yearForm');
+      f[person + 'Gross'].value = est.pay;
+      f[person + 'TaxPaid'].value = est.tax;
+      f.dispatchEvent(new Event('change'));
+    });
+    return el('div', { class: 'calc-box' }, [
+      el('p', { class: 'calc-title', text: 'From a payslip: estimate pay and tax for the full year' }),
+      el('p', { class: 'muted small', text: 'Use the “to date” (or “YTD”) figures on your latest payslip. On your last payslip of the year, put 12 months.' }),
+      el('div', { class: 'calc-row' }, [pay, tax, months]),
+      el('div', { class: 'calc-row' }, [result, use]),
+    ]);
+  }
+
+  // Default "months so far": 12 for a finished year, otherwise the current month,
+  // unless the person has typed their own number.
+  function syncAutoMonths() {
+    const y = Number(state.selectedYear);
+    const now = new Date();
+    const m = String(y < now.getFullYear() ? 12 : now.getMonth() + 1);
+    $$('input.auto-months').forEach((i) => {
+      if (i.value !== m) { i.value = m; i.dispatchEvent(new Event('input')); }
+    });
+  }
+
   const FIELD_CALCS = {
-    annualise: () => multiplyCalc({
-      id: 'calcAnnual', title: 'Estimate a full year from your latest payslip',
-      aLabel: 'Taxable pay to date (€)', bLabel: 'Months paid so far', op: '÷ months × 12',
-      bDefault: new Date().getMonth() + 1,
-      compute: (a, b) => (b > 0 ? Math.round((a / b) * 12) : 0),
-      format: (v) => eur0.format(v),
-      use: (v) => setYearField('youGross', v),
-    }),
+    ytdYou: () => ytdCalc('you'),
+    ytdSpouse: () => ytdCalc('spouse'),
     wfhDays: () => multiplyCalc({
       id: 'calcWfh', title: 'Work out your days at home',
       aLabel: 'Weeks you worked', bLabel: 'Days a week at home', aDefault: 46,

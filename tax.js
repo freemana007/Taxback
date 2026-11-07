@@ -176,9 +176,20 @@
     const all = (input.expenses || []).filter((e) => Number(e.year) === year);
     const who = married ? ['you', 'spouse'] : ['you'];
 
+    // gross = pay from employment (PAYE); welfare = taxable social welfare
+    // payments such as State Pension (Contributory) or Illness Benefit. Both
+    // are taxed, but only employment pay earns the employee credit and counts
+    // towards the pension limit.
     const gross = {};
-    who.forEach((p) => { gross[p] = Math.max(0, num(people[p] && people[p].gross)); });
-    const totalGross = sum(who.map((p) => gross[p]));
+    const welfare = {};
+    const income = {};
+    who.forEach((p) => {
+      gross[p] = Math.max(0, num(people[p] && people[p].gross));
+      welfare[p] = Math.max(0, num(people[p] && people[p].welfare));
+      income[p] = gross[p] + welfare[p];
+    });
+    const totalGross = sum(who.map((p) => income[p]));
+    const totalWelfare = sum(who.map((p) => welfare[p]));
 
     // ---- Deductions (reduce taxable income) ----
     const deductions = {};
@@ -213,7 +224,7 @@
     // ---- Rate band ----
     // Married: the one-earner band, increased by the lower earner's income up to a maximum.
     const bandBase = married ? r.bandMarriedOneEarner : r.bandSingle;
-    const bandIncrease = married ? Math.min(Math.min(gross.you, gross.spouse), r.bandSecondEarnerMax) : 0;
+    const bandIncrease = married ? Math.min(Math.min(income.you, income.spouse), r.bandSecondEarnerMax) : 0;
     const taxOn = (b) => Math.min(taxable, b) * STANDARD_RATE + Math.max(0, taxable - b) * HIGHER_RATE;
 
     // ---- Credits ----
@@ -282,6 +293,7 @@
     return {
       year, married, rates: r,
       totalGross: round2(totalGross),
+      totalWelfare: round2(totalWelfare),
       deductions: mapRound(deductions),
       totalDeductions: round2(totalDeductions),
       taxable: round2(taxable),

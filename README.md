@@ -20,6 +20,11 @@ Or serve it locally: `npm start`, then visit http://localhost:8080.
 - **Help on every field**: "Where do I find this?" boxes say exactly where each
   number is (myAccount page, payslip line, bank statement), with calculators
   for a full year's pay, days worked from home and a year of rent.
+- **Pay and tax that match**: for a year that isn't over, a calculator turns
+  your latest payslip's "to date" figures into full-year pay **and** tax
+  together, and the Overview warns if the year is still running. Taxable
+  social welfare (State Pension, Illness Benefit, Maternity Benefit and so on)
+  has its own box: it's taxed but doesn't earn the employee credit.
 - **Pay month by month or from payslips**: enter pay and tax for each month
   (weekly pay can be typed as `812 + 812 + 812 + 812`), optionally estimate the
   full year from the months entered, or choose a PDF payslip and the app reads

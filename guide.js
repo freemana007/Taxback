@@ -35,10 +35,27 @@
       body: [
         '**No myAccount?** Use your last payslip of the year (December). Look for **Taxable pay to date** or **Gross pay for tax YTD**.',
         '**Prefer to go month by month?** Choose “Month by month” above. You can type each month’s pay from your payslips, or upload a PDF payslip and the app reads the numbers for you.',
-        '**For this year, before it ends:** take “Taxable pay to date” from your latest payslip, divide by the months so far, and multiply by 12. The calculator below does this for you.',
+        '**For this year, before it ends:** your payslip only shows pay and tax **so far**. Estimate both for the full year, or the refund will be wrong. The calculator below does both at once.',
         'Use pay **after** any pension that comes out of your wages. The Employment Detail Summary already shows it that way.',
       ],
-      calc: 'annualise',
+      calc: 'ytdYou',
+    },
+    spouseGross: {
+      title: 'Where do I find my spouse’s pay?',
+      body: [
+        'The same places as yours: your spouse’s own myAccount (PAYE Services → Review your tax → Employment Detail Summary), or their last payslip of the year.',
+        'Copy **Gross pay** into this box and **Tax deducted** into “Spouse’s income tax paid”.',
+      ],
+      calc: 'ytdSpouse',
+    },
+    youWelfare: {
+      title: 'What counts as taxable social welfare?',
+      body: [
+        'Some payments from the Department of Social Protection are taxed: **State Pension (Contributory)**, **Illness Benefit**, **Jobseeker’s Benefit**, **Maternity, Paternity and Parent’s Benefit**, **Invalidity Pension** and **Widow’s, Widower’s or Surviving Civil Partner’s Pension**.',
+        'Tax usually isn’t taken from these directly. Instead Revenue reduces your tax credits, so the tax is collected through your wages. Leaving them out would make your refund look bigger than it is.',
+        '**Where to find it:** myAccount → PAYE Services → Review your tax → pick the year → **Employment Detail Summary**. Department of Social Protection payments are listed there. Copy the amount Revenue shows (it already leaves out tax-free parts, such as the first weeks of Illness Benefit).',
+        'Leave it empty if you didn’t get any of these. Child Benefit and means-tested payments are not taxed.',
+      ],
     },
     youTaxPaid: {
       title: 'Where do I find the tax I paid?',
@@ -48,6 +65,7 @@
       ],
       body: [
         'On a payslip it is **Tax to date** or **PAYE YTD**. Ignore the USC and PRSI lines.',
+        '**For this year, before it ends:** use the calculator under “Your gross pay”. It estimates pay **and** tax for the full year together, so they match.',
         'You can leave this empty. The app will still show what your claims are worth, just not the refund total.',
       ],
     },

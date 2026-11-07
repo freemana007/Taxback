@@ -137,13 +137,15 @@ describe('full household walkthrough (married, 2025)', () => {
     await p.fill('#profileForm [name=youDob]', '1984-03-10');
     await p.fill('#profileForm [name=spouseDob]', '1990-01-01');
     await p.press('#profileForm [name=spouseDob]', 'Tab');
-    // gross pay via the payslip calculator: 56,250 over 9 months → 75,000
+    // pay and tax from a payslip after 9 months: 56,250 and 10,875 → 75,000 and 14,500 for the year
     await p.click('[data-help=youGross] summary');
-    await p.fill('#calcAnnualA', '56250');
-    await p.fill('#calcAnnualB', '9');
-    assert.equal(await text(p, '[data-help=youGross] .calc-result'), '= €75,000');
-    await p.click('[data-help=youGross] >> text=Use this number');
-    for (const [k, v] of [['youTaxPaid', 14500], ['spouseGross', 30000], ['spouseTaxPaid', 2100]]) {
+    assert.equal(await p.inputValue('#calcYtdMonths'), '12', 'a finished year defaults to 12 months');
+    await p.fill('#calcYtdPay', '56250');
+    await p.fill('#calcYtdTax', '10875');
+    await p.fill('#calcYtdMonths', '9');
+    assert.equal(await text(p, '[data-help=youGross] .calc-result'), 'Full year: pay €75,000, tax €14,500');
+    await p.click('[data-help=youGross] >> text=Use these numbers');
+    for (const [k, v] of [['spouseGross', 30000], ['spouseTaxPaid', 2100]]) {
       await p.fill(`#yearForm [name=${k}]`, String(v));
       await p.press(`#yearForm [name=${k}]`, 'Tab');
     }
@@ -289,6 +291,47 @@ describe('full household walkthrough (married, 2025)', () => {
     await p.reload();
     assert.equal((await stored(p)).expenses.length, 7, 'survives reload');
     assert.deepEqual(p.errors, []);
+  });
+});
+
+describe('pay and tax for a year that is not over', () => {
+  it('scales pay and tax together and warns on the Overview', async () => {
+    const p = await newPage();
+    const y = new Date().getFullYear();
+    await p.selectOption('#yearSelect', String(y));
+    await p.click('[data-tab=profile]');
+    await p.click('[data-help=youGross] summary');
+    assert.equal(await p.inputValue('#calcYtdMonths'), String(new Date().getMonth() + 1));
+    // 10 months: 50,000 pay and 9,333.33 tax so far → 60,000 and 11,200 for the year
+    await p.fill('#calcYtdPay', '50000');
+    await p.fill('#calcYtdTax', '9333.33');
+    await p.fill('#calcYtdMonths', '10');
+    await p.click('[data-help=youGross] >> text=Use these numbers');
+    const yd = (await stored(p)).years[String(y)];
+    assert.deepEqual([yd.youGross, yd.youTaxPaid], [60000, 11200]);
+    await p.click('[data-tab=dashboard]');
+    assert.equal(await p.isVisible('#yearNote'), true);
+    if (y !== 2026) { await p.context().close(); return; }
+    // with the 2026 rates, someone on track is owed (almost) nothing, not underpaid
+    const refund = await p.$eval('#stats .stat:nth-child(2) .stat-value', (n) => n.textContent);
+    assert.equal(refund, '€0.00');
+    await p.context().close();
+  });
+
+  it('shows social welfare as its own line', async () => {
+    const p = await newPage();
+    await p.selectOption('#yearSelect', '2025');
+    await p.click('[data-tab=profile]');
+    await p.fill('#yearForm [name=youGross]', '30000');
+    await p.fill('#yearForm [name=youWelfare]', '10000');
+    await p.fill('#yearForm [name=youTaxPaid]', '4500');
+    await p.press('#yearForm [name=youTaxPaid]', 'Tab');
+    await p.click('[data-tab=dashboard]');
+    const rows = await p.$$eval('#calcTable tr', (r) => r.map((x) => [...x.cells].map((c) => c.textContent)));
+    assert.deepEqual(rows.slice(0, 3), [['Pay from work', '€30,000.00'], ['Taxable social welfare', '€10,000.00'], ['Total income', '€40,000.00']]);
+    assert.equal(await p.$eval('#stats .stat:nth-child(2) .stat-value', (n) => n.textContent), '€500.00');
+    assert.equal(await p.isVisible('#yearNote'), false);
+    await p.context().close();
   });
 });
 
