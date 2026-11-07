@@ -167,13 +167,20 @@
         <h2>Your data</h2>
         <p class="muted">Everything is stored only in this browser. Nothing is uploaded. Export a backup now and then, especially before clearing your browser.</p>
         <div class="actions">
-          <button id="exportBtn" class="primary">Export backup (JSON)</button>
-          <button id="exportCsvBtn">Export receipts (CSV)</button>
-          <label class="button">Import backup
-            <input id="importFile" type="file" accept="application/json,.json" hidden>
-          </label>
-          <button id="resetBtn" class="danger">Delete all data</button>
+          <button type="button" id="exportBtn" class="primary">Show backup</button>
+          <button type="button" id="exportCsvBtn">Show receipts as CSV</button>
+          <label class="button" for="importFile">Load backup file</label>
+          <input id="importFile" type="file" accept="application/json,.json" hidden>
         </div>
+        <label class="box-label" for="dataBox">Backup text. Copy it somewhere safe, or paste a backup here to restore it.</label>
+        <textarea id="dataBox" rows="8" spellcheck="false" placeholder="Click “Show backup”, or paste a backup to restore."></textarea>
+        <div class="actions">
+          <button type="button" id="copyBtn">Copy</button>
+          <button type="button" id="downloadBtn">Download as file</button>
+          <button type="button" id="restoreBtn">Restore from text</button>
+          <button type="button" id="resetBtn" class="danger">Delete all data</button>
+        </div>
+        <p class="status" id="dataStatus" role="status" aria-live="polite"></p>
       </div>
       <div class="card">
         <h2>Rates used</h2>

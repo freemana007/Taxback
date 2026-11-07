@@ -15,7 +15,7 @@
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #111614;
     --surface: #1a211e;
     --text: #e6ece9;
@@ -30,6 +30,21 @@
     --row-alt: #202925;
     color-scheme: dark;
   }
+}
+:root[data-theme="dark"] {
+    --bg: #111614;
+    --surface: #1a211e;
+    --text: #e6ece9;
+    --muted: #9aa8a2;
+    --border: #2d3733;
+    --accent: #3cbf92;
+    --accent-ink: #08130f;
+    --accent-soft: #173229;
+    --warn: #f0b24a;
+    --warn-soft: #2e2412;
+    --bad: #ff8a80;
+    --row-alt: #202925;
+    color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -47,7 +62,9 @@ code { font-size: .9em; }
 
 .top {
   display: flex; align-items: center; justify-content: space-between; gap: 1rem;
-  padding: 1rem max(16px, calc((100% - 1040px) / 2));
+  padding-block: 1rem;
+  padding-left: max(16px, env(safe-area-inset-left, 0px), calc((100% - 1040px) / 2));
+  padding-right: max(16px, env(safe-area-inset-right, 0px), calc((100% - 1040px) / 2));
   background: var(--surface); border-bottom: 1px solid var(--border);
 }
 .brand { display: flex; gap: .75rem; align-items: center; }
@@ -60,7 +77,9 @@ code { font-size: .9em; }
 
 .tabs {
   display: flex; gap: .25rem; overflow-x: auto;
-  padding: 0 max(16px, calc((100% - 1040px) / 2));
+  padding-block: 0;
+  padding-left: max(16px, env(safe-area-inset-left, 0px), calc((100% - 1040px) / 2));
+  padding-right: max(16px, env(safe-area-inset-right, 0px), calc((100% - 1040px) / 2));
   background: var(--surface); border-bottom: 1px solid var(--border);
 }
 .tabs button {
@@ -69,7 +88,11 @@ code { font-size: .9em; }
 }
 .tabs button[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
 
-main { max-width: 1072px; margin: 0 auto; padding: 1rem 16px 3rem; }
+main {
+  max-width: 1072px; margin: 0 auto; padding-block: 1rem 3rem;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
 .card {
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
   padding: 1rem 1.1rem; margin-bottom: 1rem;
@@ -161,3 +184,16 @@ label.inline { display: flex; align-items: center; gap: .5rem; font-size: .85rem
 .checklist label input { margin-top: .2rem; flex: none; }
 .checklist label > span { display: flex; flex-direction: column; }
 .checklist input:checked + span strong { text-decoration: line-through; color: var(--muted); }
+
+textarea {
+  width: 100%; font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--text); background: var(--bg); border: 1px solid var(--border);
+  border-radius: 8px; padding: .6rem; resize: vertical; margin: .25rem 0 .75rem;
+}
+textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.box-label { display: block; margin-top: 1rem; font-size: .85rem; color: var(--muted); }
+.status { min-height: 1.4em; margin: .5rem 0 0; font-size: .9rem; color: var(--accent); }
+.status.error { color: var(--bad); }
+button.armed { background: var(--bad); color: var(--surface); border-color: var(--bad); }
+button.link.armed { color: var(--surface); border-radius: 6px; }
+@media (prefers-reduced-motion: no-preference) { button { transition: background-color .15s, color .15s; } }

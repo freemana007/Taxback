@@ -39,7 +39,7 @@
 
   function save() {
     try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
-    catch (e) { alert('Could not save to browser storage. Export a backup to keep your data.'); }
+    catch (e) { setStatus('This browser would not save your changes. Copy a backup from Rates & data to keep them.', true); }
   }
 
   function yearData(y) {
@@ -311,12 +311,11 @@
           el('span', { class: 'num', text: eur.format(e.amount) }),
           el('div', { class: 'item-actions' }, [
             el('button', { class: 'link', text: 'Edit', onclick: () => startEdit(e) }),
-            el('button', { class: 'link danger', text: 'Delete', onclick: () => {
-              if (!confirm('Delete this receipt?')) return;
+            el('button', { class: 'link danger', text: 'Delete', onclick: (ev) => armConfirm(ev.currentTarget, 'Confirm delete', () => {
               state.expenses = state.expenses.filter((x) => x.id !== e.id);
               if (editingId === e.id) resetExpenseForm();
               save(); renderAll();
-            } }),
+            }) }),
           ]),
         ]))),
       ]);
@@ -425,39 +424,102 @@
     rows($('#ratesTable'), data);
   }
 
-  function download(name, text, type) {
-    const blob = new Blob([text], { type });
+  // Two-step confirmation inside the page (browser dialogs are not always available).
+  function armConfirm(btn, label, action) {
+    if (btn.dataset.armed) {
+      clearTimeout(Number(btn.dataset.armed));
+      delete btn.dataset.armed;
+      action();
+      return;
+    }
+    const original = btn.textContent;
+    btn.textContent = label;
+    btn.classList.add('armed');
+    btn.dataset.armed = String(setTimeout(() => {
+      delete btn.dataset.armed; btn.textContent = original; btn.classList.remove('armed');
+    }, 4000));
+  }
+
+  function setStatus(msg, isError) {
+    const n = $('#dataStatus');
+    if (!n) return;
+    n.textContent = msg;
+    n.classList.toggle('error', !!isError);
+  }
+
+  let boxKind = 'json';
+
+  function backupJson() { return JSON.stringify(state, null, 2); }
+
+  function receiptsCsv() {
+    const esc = (v) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+    const head = ['year', 'date', 'category', 'person', 'amount', 'description', 'adults', 'children', 'partTime'];
+    return [head.join(',')].concat(state.expenses
+      .slice().sort((a, b) => (a.date || '').localeCompare(b.date || ''))
+      .map((e) => [e.year, e.date, Tax.CATEGORIES[e.category]?.label || e.category, e.person, e.amount,
+        e.description, e.adults ?? '', e.children ?? '', e.partTime ? 'yes' : ''].map(esc).join(','))).join('\n');
+  }
+
+  function showBackup() {
+    boxKind = 'json'; $('#dataBox').value = backupJson();
+    setStatus(`Backup of ${state.expenses.length} receipts is in the box. Copy it somewhere safe.`);
+  }
+
+  function showCsv() {
+    boxKind = 'csv'; $('#dataBox').value = receiptsCsv();
+    setStatus('Receipts as CSV are in the box. Paste into a spreadsheet.');
+  }
+
+  async function copyBox() {
+    const box = $('#dataBox');
+    if (!box.value) showBackup();
+    try {
+      await navigator.clipboard.writeText(box.value);
+      setStatus('Copied.');
+    } catch (e) {
+      box.focus(); box.select();
+      setStatus('Text selected. Press Ctrl+C (or Cmd+C) to copy.');
+    }
+  }
+
+  function downloadBox() {
+    const box = $('#dataBox');
+    if (!box.value) showBackup();
+    const csv = boxKind === 'csv';
+    const name = csv ? 'taxback-receipts.csv' : `taxback-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    const blob = new Blob([box.value], { type: csv ? 'text/csv' : 'application/json' });
     const a = el('a', { href: URL.createObjectURL(blob), download: name });
     document.body.append(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    setStatus('If no file appeared, use Copy instead.');
   }
 
-  function exportJson() {
-    download(`taxback-backup-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(state, null, 2), 'application/json');
+  function parseBackup(text) {
+    let data;
+    try { data = JSON.parse(text); } catch (e) { throw new Error('the text is not a Taxback backup (it is not valid JSON).'); }
+    if (!data || typeof data !== 'object' || !Array.isArray(data.expenses)) throw new Error('the text is not a Taxback backup.');
+    return data;
   }
 
-  function exportCsv() {
-    const esc = (v) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
-    const head = ['year', 'date', 'category', 'person', 'amount', 'description', 'adults', 'children', 'partTime'];
-    const lines = [head.join(',')].concat(state.expenses
-      .slice().sort((a, b) => (a.date || '').localeCompare(b.date || ''))
-      .map((e) => [e.year, e.date, Tax.CATEGORIES[e.category]?.label || e.category, e.person, e.amount,
-        e.description, e.adults ?? '', e.children ?? '', e.partTime ? 'yes' : ''].map(esc).join(',')));
-    download('taxback-receipts.csv', lines.join('\n'), 'text/csv');
+  function restoreFromBox(btn) {
+    const text = $('#dataBox').value.trim();
+    if (!text) { setStatus('Paste a backup into the box first.', true); return; }
+    let data;
+    try { data = parseBackup(text); } catch (e) { setStatus('Could not restore: ' + e.message, true); return; }
+    armConfirm(btn, 'Replace my data', () => {
+      state = Object.assign(defaultState(), data);
+      save(); resetExpenseForm(); renderAll();
+      setStatus(`Restored ${state.expenses.length} receipts.`);
+    });
+    if (btn.dataset.armed) setStatus(`Backup has ${data.expenses.length} receipts. Click again to replace your current data.`);
   }
 
-  function importJson(file) {
+  function loadFile(file) {
     const reader = new FileReader();
     reader.onload = () => {
-      try {
-        const data = JSON.parse(reader.result);
-        if (!data || typeof data !== 'object' || !Array.isArray(data.expenses)) throw new Error('Not a Taxback backup');
-        if (!confirm('Replace your current data with this backup?')) return;
-        state = Object.assign(defaultState(), data);
-        save(); resetExpenseForm(); renderAll();
-      } catch (err) {
-        alert('Could not import: ' + err.message);
-      }
+      $('#dataBox').value = reader.result; boxKind = 'json';
+      try { parseBackup(reader.result); setStatus('Backup loaded into the box. Click “Restore from text” to use it.'); }
+      catch (e) { setStatus('Could not read that file: ' + e.message, true); }
     };
     reader.readAsText(file);
   }
@@ -499,12 +561,17 @@
     $('#expFilter').addEventListener('change', renderExpenses);
     $('#profileForm').addEventListener('change', onProfileChange);
     $('#yearForm').addEventListener('change', onYearChange);
-    $('#exportBtn').addEventListener('click', exportJson);
-    $('#exportCsvBtn').addEventListener('click', exportCsv);
-    $('#importFile').addEventListener('change', (e) => { if (e.target.files[0]) importJson(e.target.files[0]); e.target.value = ''; });
-    $('#resetBtn').addEventListener('click', () => {
-      if (!confirm('Delete all receipts and settings from this browser? Export a backup first if you want to keep them.')) return;
-      state = defaultState(); save(); resetExpenseForm(); renderAll();
+    $('#exportBtn').addEventListener('click', showBackup);
+    $('#exportCsvBtn').addEventListener('click', showCsv);
+    $('#copyBtn').addEventListener('click', copyBox);
+    $('#downloadBtn').addEventListener('click', downloadBox);
+    $('#restoreBtn').addEventListener('click', (e) => restoreFromBox(e.currentTarget));
+    $('#importFile').addEventListener('change', (e) => { if (e.target.files[0]) loadFile(e.target.files[0]); e.target.value = ''; });
+    $('#resetBtn').addEventListener('click', (e) => {
+      armConfirm(e.currentTarget, 'Click again to delete everything', () => {
+        state = defaultState(); save(); resetExpenseForm(); renderAll();
+        setStatus('All data deleted.');
+      });
     });
     let tab = 'dashboard';
     try { tab = sessionStorage.getItem('taxback.tab') || tab; } catch (e) { /* ignore */ }
