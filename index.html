@@ -76,6 +76,12 @@
         </div>
       </div>
       <div class="card">
+        <h2>Income tax, USC and PRSI</h2>
+        <p class="muted small">Everything taken from your pay for the year. Tax claims only reduce income tax; USC and PRSI don't change.</p>
+        <div class="scroll"><table class="tbl" id="chargesTable"></table></div>
+        <p class="muted small" id="chargesNote"></p>
+      </div>
+      <div class="card">
         <h2>All open years</h2>
         <p class="muted small">You can claim back up to 4 years. Each year closes on 31 December, four years later.</p>
         <div class="scroll"><table class="tbl" id="yearsTable"></table></div>
@@ -188,7 +194,7 @@
             <h3>Pay for each month</h3>
             <div class="seg-group person-tabs" id="monthPerson" role="group" aria-label="Whose pay"></div>
           </div>
-          <p class="muted small">Copy “Taxable pay” (or “Gross pay”) and “PAYE” (income tax) from each payslip. Paid weekly? Type each week with + between, like 812 + 812 + 812 + 812.</p>
+          <p class="muted small">Copy “Taxable pay” (or “Gross pay”), “PAYE” (income tax), “USC” and “PRSI” from each payslip. Only pay and income tax are needed. Paid weekly? Type each week with + between, like 812 + 812 + 812 + 812.</p>
           <div class="scroll"><table class="tbl months" id="monthsTable"></table></div>
           <div class="actions months-actions">
             <button type="button" id="fillMonths">Copy first month to empty months</button>
@@ -214,6 +220,33 @@
           <label class="spouse-only">Spouse's taxable social welfare (€)
             <input name="spouseWelfare" type="number" step="0.01" min="0" inputmode="decimal">
           </label>
+          <h3 class="wide form-sub">USC and PRSI</h3>
+          <p class="hint wide">The app works these out from your pay. Add what you paid to see if you paid the right amount. All optional.</p>
+          <label>Pension taken from your wages (€)
+            <input name="youPensionWages" type="number" step="0.01" min="0" inputmode="decimal">
+          </label>
+          <label>USC you paid (€)
+            <input name="youUscPaid" type="number" step="0.01" min="0" inputmode="decimal">
+          </label>
+          <label>PRSI you paid (€)
+            <input name="youPrsiPaid" type="number" step="0.01" min="0" inputmode="decimal">
+          </label>
+          <label class="check">
+            <input name="youMedicalCard" type="checkbox"> I have a full medical card
+          </label>
+          <label class="spouse-only">Pension taken from spouse's wages (€)
+            <input name="spousePensionWages" type="number" step="0.01" min="0" inputmode="decimal">
+          </label>
+          <label class="spouse-only">USC spouse paid (€)
+            <input name="spouseUscPaid" type="number" step="0.01" min="0" inputmode="decimal">
+          </label>
+          <label class="spouse-only">PRSI spouse paid (€)
+            <input name="spousePrsiPaid" type="number" step="0.01" min="0" inputmode="decimal">
+          </label>
+          <label class="check spouse-only">
+            <input name="spouseMedicalCard" type="checkbox"> My spouse has a full medical card
+          </label>
+          <h3 class="wide form-sub">Other details</h3>
           <label>Days worked from home
             <input name="wfhDays" type="number" min="0" max="366" step="1">
           </label>
@@ -265,7 +298,7 @@
       <div class="card">
         <h2>What this does not cover</h2>
         <ul class="small">
-          <li>USC and PRSI (credits and reliefs don't reduce them).</li>
+          <li>PRSI for the self-employed (Class S) and the USC surcharge on self-employed income over €100,000. Employee PRSI is worked out on your average week, so it can differ by a few euro from your payslips.</li>
           <li>Self-assessed (Form 11) income, rental income, Rent-a-Room relief, Help to Buy.</li>
           <li>Separate or single assessment of married couples, widowed or single-parent credits.</li>
           <li>Dependent relative credit and other less common credits.</li>

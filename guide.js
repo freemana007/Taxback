@@ -48,6 +48,31 @@
       ],
       calc: 'ytdSpouse',
     },
+    youPensionWages: {
+      title: 'Why does pension matter here?',
+      body: [
+        'Pension taken from your wages lowers your income tax, but **not** your USC or PRSI. So the app adds it back to work those out.',
+        '**Where to find it:** a line on your payslip called “Pension”, “Superannuation”, “AVC” or similar. For the year, use your last payslip’s “to date” figure, or add up the months.',
+        'Leave it empty if nothing for a pension comes out of your pay.',
+      ],
+    },
+    youUscPaid: {
+      title: 'Where do I find the USC and PRSI I paid?',
+      steps: [
+        'In **myAccount**: PAYE Services → Review your tax → pick the year → **Employment Detail Summary**. It lists USC and PRSI for each job.',
+        'Or on your **last payslip of the year**: “USC to date” and “PRSI to date” (sometimes “PRSI EE”, meaning the employee’s part). Ignore “PRSI ER”, which your employer pays.',
+      ],
+      body: [
+        'If these match what the app works out, you paid the right amount. A big USC difference is worth checking with Revenue, as it can be refunded.',
+      ],
+    },
+    youMedicalCard: {
+      title: 'Why does a medical card matter?',
+      body: [
+        'If you have a **full medical card** (not a GP visit card), or you’re **70 or over**, and your income is €60,000 or less, you pay a lower rate of USC: at most 2%.',
+        'Employers don’t always know this, so people sometimes overpay USC. If so, you can get it back from Revenue.',
+      ],
+    },
     youWelfare: {
       title: 'What counts as taxable social welfare?',
       body: [
@@ -270,7 +295,9 @@
     ['Tax year', 'Runs from 1 January to 31 December. You can claim for the last 4 years.'],
     ['Gross pay', 'Your pay before tax is taken off.'],
     ['Income tax', 'The main tax on your pay. Your employer takes it from your wages (that is what PAYE means: Pay As You Earn).'],
-    ['USC and PRSI', 'Two other charges on your pay. Claims in this app do not change them.'],
+    ['USC', 'Universal Social Charge: a second charge on pay, from 0.5% to 8%. Nobody pays it on income of €13,000 or less. Tax claims don’t reduce it.'],
+    ['PRSI', 'Pay Related Social Insurance: about 4% of pay, which builds your right to the State Pension and other benefits. Not charged on pay of €352 a week or less, or from age 66.'],
+    ['Take-home pay', 'What’s left after income tax, USC, PRSI and pension come out of your pay.'],
     ['Tax credit', 'Money off your tax bill. A €100 credit means €100 less tax.'],
     ['Tax relief', 'The general word for tax you get back for something you paid.'],
     ['Deduction', 'An amount taken off your income before tax is worked out. You save 20% or 40% of it, depending on your rate.'],

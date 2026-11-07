@@ -63,3 +63,20 @@ test('nothing found returns nulls', () => {
   assert.equal(r.taxPeriod, null);
   assert.equal(r.payDate, null);
 });
+
+test('USC and PRSI are found, employer PRSI ignored', () => {
+  const r = P.parseText([
+    'Description   This Period   Year to Date',
+    'Taxable Pay   3,800.00   11,400.00',
+    'PAYE   512.40   1,537.20',
+    'USC   120.15   360.45',
+    'PRSI Class A1',
+    'PRSI EE   164.00   492.00',
+    'PRSI ER   425.00   1,275.00',
+  ]);
+  assert.equal(r.uscPeriod, 120.15);
+  assert.equal(r.uscYTD, 360.45);
+  assert.equal(r.prsiPeriod, 164);
+  assert.equal(r.prsiYTD, 492);
+  assert.equal(r.taxPeriod, 512.4);
+});

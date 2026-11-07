@@ -329,3 +329,6 @@ label.button:focus-within { outline: 2px solid var(--accent); outline-offset: 1p
 input[readonly] { background: var(--row-alt); color: var(--muted); cursor: default; }
 .tbl tr.note td { color: var(--warn); font-size: .9rem; }
 #yearNote { margin: 0 0 1rem; }
+.form-sub { margin: .75rem 0 0; font-size: .95rem; padding-top: .75rem; border-top: 1px solid var(--border); }
+#chargesTable td:not(:first-child), #chargesTable th:not(:first-child) { text-align: right; white-space: nowrap; }
+#ratesTable td { white-space: normal; min-width: 7rem; }

@@ -25,6 +25,14 @@ Or serve it locally: `npm start`, then visit http://localhost:8080.
   together, and the Overview warns if the year is still running. Taxable
   social welfare (State Pension, Illness Benefit, Maternity Benefit and so on)
   has its own box: it's taxed but doesn't earn the employee credit.
+- **USC and PRSI**: worked out for each person and year, with the USC
+  exemption (income of €13,000 or less), the reduced USC rate for medical card
+  holders and people 70+ (income up to €60,000), the weekly PRSI threshold and
+  credit, and no PRSI from age 66. Both are charged before pension taken from
+  wages and not on social welfare. The Overview shows income tax, USC and
+  PRSI due against what you paid, plus take-home pay. Overpaid USC is added
+  to the refund; PRSI is shown but left out of the refund, as it's estimated
+  on an average week.
 - **Pay month by month or from payslips**: enter pay and tax for each month
   (weekly pay can be typed as `812 + 812 + 812 + 812`), optionally estimate the
   full year from the months entered, or choose a PDF payslip and the app reads
@@ -76,7 +84,7 @@ budget figures that should be confirmed on revenue.ie.
 
 ## Not covered
 
-USC and PRSI, self-assessed (Form 11) income, rental income, Rent-a-Room relief,
+Self-employed PRSI (Class S) and the USC surcharge on self-employed income, self-assessed (Form 11) income, rental income, Rent-a-Room relief,
 Help to Buy, separate assessment, and less common credits (dependent relative,
 single person child carer, etc.).
 
@@ -90,7 +98,7 @@ for the hosted link.
 ## Tests
 
 ```
-npm test          # calculator and payslip parser (41 checks, hand-worked figures)
+npm test          # calculator and payslip parser (50 checks, hand-worked figures)
 npm run test:e2e  # whole app in a real browser (needs Playwright + Chromium)
 ```
 

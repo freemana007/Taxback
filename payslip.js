@@ -26,6 +26,10 @@
     { re: /(\bpaye\b|income\s*tax|tax\s*deducted|tax\s*paid)/i, rank: 1 },
     { re: /(^\s*tax\b)/i, rank: 2 },
   ];
+  const USC_RULES = [{ re: /(\busc\b|universal\s*social(\s*charge)?)/i, rank: 1 }];
+  const USC_EXCLUDE = /(rate|band|cut[\s-]*off|exempt|employer|\ber\b)/i;
+  const PRSI_RULES = [{ re: /(\bprsi\b(\s*\(?\s*(ee|employee)\s*\)?)?)/i, rank: 1 }];
+  const PRSI_EXCLUDE = /(class|employer|\ber\b|insurable|week|credit|rate)/i;
   const TAX_EXCLUDE = /(tax\s*(year|week|month|period)\b(?!\s*to)|credit|cut[\s-]*off|band|basis|\busc\b|prsi|allowance|taxable|code|refund|number|\bno\b|reference|pay\s*for\s*tax|gross)/i;
 
   // Money: 1,234.56 or 1234.56 or 1,234 (not percentages or dates).
@@ -78,7 +82,10 @@
    */
   function parseText(lines) {
     const clean = lines.map((l) => String(l).replace(/\s+/g, ' ').trim()).filter(Boolean);
-    const found = { gross: {}, tax: {} };
+    const found = { gross: {}, tax: {}, usc: {}, prsi: {} };
+    const KINDS = [['gross', GROSS_RULES, GROSS_EXCLUDE], ['tax', TAX_RULES, TAX_EXCLUDE],
+      ['usc', USC_RULES, USC_EXCLUDE], ['prsi', PRSI_RULES, PRSI_EXCLUDE]];
+    const isLabel = (l) => KINDS.some(([, rules, ex]) => classify(l, rules, ex));
 
     const take = (kind, slot, value, rank) => {
       if (value == null || !(value > 0)) return;
@@ -87,12 +94,11 @@
     };
 
     clean.forEach((line, i) => {
-      [['gross', GROSS_RULES, GROSS_EXCLUDE], ['tax', TAX_RULES, TAX_EXCLUDE]].forEach(([kind, rules, exclude]) => {
+      KINDS.forEach(([kind, rules, exclude]) => {
         const rule = classify(line, rules, exclude);
         if (!rule) return;
         let nums = numbersIn(afterLabel(line, rule.re));
-        if (!nums.length && clean[i + 1] && !classify(clean[i + 1], GROSS_RULES, GROSS_EXCLUDE) &&
-            !classify(clean[i + 1], TAX_RULES, TAX_EXCLUDE)) {
+        if (!nums.length && clean[i + 1] && !isLabel(clean[i + 1])) {
           nums = numbersIn(clean[i + 1]);
         }
         if (!nums.length) return;
@@ -113,6 +119,10 @@
       taxPeriod: val(found.tax.period),
       grossYTD: val(found.gross.ytd),
       taxYTD: val(found.tax.ytd),
+      uscPeriod: val(found.usc.period),
+      prsiPeriod: val(found.prsi.period),
+      uscYTD: val(found.usc.ytd),
+      prsiYTD: val(found.prsi.ytd),
       payDate: parseDate(text),
       frequency: freq ? freq[1].toLowerCase().replace(/\s|-/g, '') : null,
     };

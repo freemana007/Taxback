@@ -62,6 +62,50 @@
 
   const YEARS = Object.keys(RATES).map(Number);
 
+  // USC: bands are [upper limit, rate]. Nobody pays USC if their income for
+  // USC is €13,000 or less. Medical card holders and people aged 70+ with
+  // income up to €60,000 pay at most 2%.
+  // PRSI (Class A employees): `rate` is the year's average where the rate
+  // changed in October (4% → 4.1% on 1 Oct 2024, → 4.2% on 1 Oct 2025,
+  // → 4.35% on 1 Oct 2026). No PRSI on weekly pay of €352 or less; a PRSI
+  // credit of up to €12 a week tapers away by 1/6 of pay above €352.
+  const USC_PRSI = {
+    2022: { usc: [[12012, 0.005], [21295, 0.02], [70044, 0.045], [Infinity, 0.08]], prsi: 0.04 },
+    2023: { usc: [[12012, 0.005], [22920, 0.02], [70044, 0.045], [Infinity, 0.08]], prsi: 0.04 },
+    2024: { usc: [[12012, 0.005], [25760, 0.02], [70044, 0.04], [Infinity, 0.08]], prsi: 0.04 * 0.75 + 0.041 * 0.25 },
+    2025: { usc: [[12012, 0.005], [27382, 0.02], [70044, 0.03], [Infinity, 0.08]], prsi: 0.041 * 0.75 + 0.042 * 0.25, verifyPrsi: true },
+    2026: { usc: [[12012, 0.005], [28700, 0.02], [70044, 0.03], [Infinity, 0.08]], prsi: 0.042 * 0.75 + 0.0435 * 0.25, verify: true },
+    2027: { usc: [[12012, 0.005], [28700, 0.02], [70044, 0.03], [Infinity, 0.08]], prsi: 0.0435, verify: true },
+  };
+  const USC_EXEMPT_LIMIT = 13000;
+  const USC_REDUCED_LIMIT = 60000;
+  const PRSI_WEEKLY_THRESHOLD = 352;
+  const PRSI_CREDIT_MAX = 12;
+  const PRSI_EXEMPT_AGE = 66;
+
+  function uscFor(year, income, reduced) {
+    const bands = (USC_PRSI[year] || USC_PRSI[2027]).usc;
+    if (!(income > USC_EXEMPT_LIMIT)) return 0;
+    const useBands = reduced && income <= USC_REDUCED_LIMIT ? [[bands[0][0], 0.005], [Infinity, 0.02]] : bands;
+    let usc = 0;
+    let lower = 0;
+    for (const [upper, rate] of useBands) {
+      if (income > lower) usc += (Math.min(income, upper) - lower) * rate;
+      lower = upper;
+    }
+    return usc;
+  }
+
+  // Worked out week by week on the average week, as PRSI is charged per pay period.
+  function prsiFor(year, pay, age) {
+    if (!(pay > 0) || (age != null && age >= PRSI_EXEMPT_AGE)) return 0;
+    const rate = (USC_PRSI[year] || USC_PRSI[2027]).prsi;
+    const week = pay / 52;
+    if (week <= PRSI_WEEKLY_THRESHOLD) return 0;
+    const credit = Math.max(0, PRSI_CREDIT_MAX - (week - PRSI_WEEKLY_THRESHOLD) / 6);
+    return Math.max(0, week * rate - credit) * 52;
+  }
+
   // Constants that have not changed across the years covered.
   const MED_INSURANCE_CAP_ADULT = 1000;
   const MED_INSURANCE_CAP_CHILD = 500;
@@ -191,6 +235,26 @@
     const totalGross = sum(who.map((p) => income[p]));
     const totalWelfare = sum(who.map((p) => welfare[p]));
 
+    // ---- USC and PRSI (per person; reliefs and claims don't change them) ----
+    // Both are charged on pay before pension taken from wages; social welfare
+    // payments are exempt from both.
+    const usc = {};
+    const prsi = {};
+    const uscPrsiDetail = {};
+    who.forEach((p) => {
+      const pp = people[p] || {};
+      const payBeforePension = gross[p] + Math.max(0, num(pp.pensionFromWages));
+      const age = ageAtYearEnd(pp.dob, year);
+      const reduced = !!pp.medicalCard || (age != null && age >= 70);
+      usc[p] = uscFor(year, payBeforePension, reduced);
+      prsi[p] = prsiFor(year, payBeforePension, age);
+      uscPrsiDetail[p] = { payBeforePension, reducedUsc: reduced && payBeforePension <= USC_REDUCED_LIMIT, prsiExempt: age != null && age >= PRSI_EXEMPT_AGE };
+    });
+    const paidOf = (key) => {
+      const entered = who.filter((p) => people[p] && people[p][key] !== '' && people[p][key] != null);
+      return entered.length ? sum(entered.map((p) => num(people[p][key]))) : null;
+    };
+
     // ---- Deductions (reduce taxable income) ----
     const deductions = {};
 
@@ -305,6 +369,11 @@
       taxPaid: round2(taxPaid),
       hasTaxPaid,
       refund: round2(taxPaid - liability),
+      usc: { you: round2(usc.you || 0), spouse: round2(usc.spouse || 0), total: round2(sum(Object.values(usc))) },
+      prsi: { you: round2(prsi.you || 0), spouse: round2(prsi.spouse || 0), total: round2(sum(Object.values(prsi))) },
+      uscPaid: paidOf('uscPaid'),
+      prsiPaid: paidOf('prsiPaid'),
+      uscPrsiDetail,
       detail: {
         pension: pensionDetail, wfhDays, remoteBills, rentPaid, rentCap, interest, increase,
         homeCarerAvailable: round2(homeCarer), homeCarerChosen: useCarer, bandIncrease,
@@ -336,7 +405,7 @@
   }
 
   return {
-    RATES, YEARS, CATEGORIES, CLAIM_KEYS,
+    RATES, YEARS, CATEGORIES, CLAIM_KEYS, USC_PRSI, uscFor, prsiFor,
     STANDARD_RATE, HIGHER_RATE,
     ratesFor, daysInYear, ageAtYearEnd, pensionPercent, pensionLimit,
     claimDeadline, daysUntil, openYears, computeYear, claimValues,

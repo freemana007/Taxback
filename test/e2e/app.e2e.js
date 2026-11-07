@@ -242,6 +242,36 @@ describe('full household walkthrough (married, 2025)', () => {
     // the open-years table shows the same 2025 numbers
     const yr = await p.$eval('#yearsTable tr.current', (r) => [...r.cells].map((c) => c.textContent));
     assert.deepEqual(yr.slice(0, 4), ['2025', '7', euro(7669.44), euro(6869.44)]);
+
+    // USC and PRSI, each person separately (2025):
+    //   you 75,000: 60.06 + 307.40 + 1,279.86 + 4,956 × 8% 396.48 = 2,043.80 USC; PRSI 75,000 × 4.125% = 3,093.75
+    //   spouse 30,000: 60.06 + 307.40 + 2,618 × 3% 78.54 = 446.00 USC; PRSI 30,000 × 4.125% = 1,237.50
+    // Total taken: 9,730.56 + 2,489.80 + 4,331.25 = 16,551.61 → take-home 105,000 − 16,551.61 = 88,448.39
+    const charges = await p.$$eval('#chargesTable tr', (r) => r.map((x) => [...x.cells].map((c) => c.textContent)));
+    assert.deepEqual(charges[1].slice(0, 2), ['Income tax', euro(9730.56)]);
+    assert.deepEqual(charges[2].slice(0, 2), ['USC', euro(2489.8)]);
+    assert.deepEqual(charges[3].slice(0, 2), ['PRSI', euro(4331.25)]);
+    assert.deepEqual(charges[4].slice(0, 2), ['Total', euro(16551.61)]);
+    assert.deepEqual(charges[5].slice(0, 2), ['Take-home pay', euro(88448.39)]);
+    // entering USC paid: €300 too much → added to the refund
+    await p.click('[data-tab=profile]');
+    await p.fill('#yearForm [name=youUscPaid]', '2343.80');
+    await p.fill('#yearForm [name=spouseUscPaid]', '446');
+    await p.press('#yearForm [name=spouseUscPaid]', 'Tab');
+    await p.click('[data-tab=dashboard]');
+    assert.equal(await p.$eval('#stats .stat:nth-child(2) .stat-value', (n) => n.textContent), euro(7169.44));
+    const usc = await p.$$eval('#chargesTable tr', (r) => [...r[2].cells].map((c) => c.textContent));
+    assert.deepEqual(usc, ['USC', euro(2489.8), euro(2789.8), `${euro(300)} overpaid`]);
+    // a medical card puts the spouse on the reduced rate: 60.06 + 17,988 × 2% = 419.82
+    await p.click('[data-tab=profile]');
+    await p.check('#yearForm [name=spouseMedicalCard]');
+    await p.click('[data-tab=dashboard]');
+    assert.match(await text(p, '#chargesNote'), /your spouse €419\.82 USC/);
+    await p.click('[data-tab=profile]');
+    await p.uncheck('#yearForm [name=spouseMedicalCard]');
+    await p.fill('#yearForm [name=youUscPaid]', '');
+    await p.fill('#yearForm [name=spouseUscPaid]', '');
+    await p.press('#yearForm [name=spouseUscPaid]', 'Tab');
   });
 
   it('guide steps and quiz track progress', async () => {
@@ -424,6 +454,8 @@ describe('month-by-month pay', () => {
     await p.waitForSelector('#slipGross', { timeout: 20000 });
     assert.equal(await p.inputValue('#slipGross'), '4987.5');
     assert.equal(await p.inputValue('#slipTax'), '1095.83');
+    assert.equal(await p.inputValue('#slipUsc'), '201.4');
+    assert.equal(await p.inputValue('#slipPrsi'), '210');
     assert.equal(await p.inputValue('#slipMonth'), '2');
     assert.equal(await p.inputValue('#slipYear'), '2025');
     await p.click('text=Save to this month');
@@ -440,6 +472,8 @@ describe('month-by-month pay', () => {
     const yd = (await stored(p)).years['2025'];
     assert.equal(yd.youGross, 9975);
     assert.equal(yd.youTaxPaid, 2191.66);
+    assert.equal(yd.youUscPaid, 402.8);
+    assert.equal(yd.youPrsiPaid, 420);
     // not a PDF
     const png = path.join(require('os').tmpdir(), 'taxback-photo.png');
     fs.writeFileSync(png, Buffer.from('89504e470d0a1a0a', 'hex'));

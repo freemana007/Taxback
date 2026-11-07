@@ -55,8 +55,8 @@
       year: y,
       status: state.profile.status,
       people: {
-        you: { gross: yd.youGross, taxPaid: yd.youTaxPaid, welfare: yd.youWelfare, dob: state.profile.youDob },
-        spouse: { gross: yd.spouseGross, taxPaid: yd.spouseTaxPaid, welfare: yd.spouseWelfare, dob: state.profile.spouseDob },
+        you: personInput(yd, 'you'),
+        spouse: personInput(yd, 'spouse'),
       },
       settings: {
         wfhDays: yd.wfhDays,
@@ -67,6 +67,19 @@
       expenses: state.expenses,
     };
   }
+
+  function personInput(yd, p) {
+    return {
+      gross: yd[p + 'Gross'], taxPaid: yd[p + 'TaxPaid'], welfare: yd[p + 'Welfare'],
+      pensionFromWages: yd[p + 'PensionWages'], uscPaid: yd[p + 'UscPaid'], prsiPaid: yd[p + 'PrsiPaid'],
+      medicalCard: !!yd[p + 'MedicalCard'], dob: state.profile[p + 'Dob'],
+    };
+  }
+
+  const YEAR_NUMBER_FIELDS = ['youGross', 'youTaxPaid', 'youWelfare', 'youPensionWages', 'youUscPaid', 'youPrsiPaid',
+    'spouseGross', 'spouseTaxPaid', 'spouseWelfare', 'spousePensionWages', 'spouseUscPaid', 'spousePrsiPaid',
+    'wfhDays', 'mortgageInterest2022', 'carerIncome'];
+  const YEAR_CHECK_FIELDS = ['homeCarer', 'youMedicalCard', 'spouseMedicalCard'];
 
   // ---------- Helpers ----------
   function el(tag, attrs, children) {
@@ -128,11 +141,17 @@
       { label: 'Your claims are worth', value: eur.format(total), note: `${count} receipt${count === 1 ? '' : 's'} logged` },
     ];
     if (base.hasTaxPaid) {
+      // PRSI is left out: it's worked out on an average week, so small
+      // differences from payslips are expected and rarely refundable.
+      const uscDiff = base.uscPaid == null ? 0 : r2(base.uscPaid - base.usc.total);
+      const totalRefund = r2(base.refund + uscDiff);
       stats.push({
-        label: base.refund >= 0 ? 'Estimated refund' : 'Estimated underpaid',
-        value: eur.format(Math.abs(base.refund)),
-        note: `Paid ${eur0.format(base.taxPaid)} · owed ${eur0.format(base.liability)}`,
-        cls: base.refund >= 0 ? 'good' : 'bad',
+        label: totalRefund >= 0 ? 'Estimated refund' : 'Estimated underpaid',
+        value: eur.format(Math.abs(totalRefund)),
+        note: base.uscPaid == null
+          ? `Income tax: paid ${eur0.format(base.taxPaid)} · owed ${eur0.format(base.liability)}`
+          : `Income tax ${eur0.format(base.refund)} · USC ${eur0.format(uscDiff)}`,
+        cls: totalRefund >= 0 ? 'good' : 'bad',
       });
     } else {
       stats.push({ label: 'Estimated refund', value: '—', note: 'Add tax paid in Income & settings' });
@@ -196,6 +215,7 @@
     if (base.hasTaxPaid) calc.push({ cells: ['Income tax paid', eur.format(base.taxPaid)] });
     calc.push({ cells: ['Marginal rate', (base.marginalRate * 100) + '%'], cls: 'muted' });
     rows($('#calcTable'), calc);
+    renderCharges(base);
 
     const now = new Date();
     const yearRows = [{ head: true, cells: ['Year', 'Receipts', 'Claims worth', 'Est. refund', 'Deadline'] }];
@@ -212,6 +232,51 @@
       });
     });
     rows($('#yearsTable'), yearRows);
+  }
+
+  // ---------- Income tax, USC and PRSI ----------
+  function renderCharges(base) {
+    const y = Number(state.selectedYear);
+    const yd = state.years[y] || {};
+    const diffCell = (paid, due) => {
+      if (paid == null) return '—';
+      const d = r2(paid - due);
+      if (Math.abs(d) < 1) return 'About right';
+      return d > 0 ? `${eur.format(d)} overpaid` : `${eur.format(-d)} underpaid`;
+    };
+    const lines = [
+      ['Income tax', base.liability, base.hasTaxPaid ? base.taxPaid : null],
+      ['USC', base.usc.total, base.uscPaid],
+      ['PRSI', base.prsi.total, base.prsiPaid],
+    ];
+    const totalDue = r2(lines.reduce((a, l) => a + l[1], 0));
+    const allPaid = lines.every((l) => l[2] != null) ? r2(lines.reduce((a, l) => a + l[2], 0)) : null;
+    const data = [{ head: true, cells: ['', 'Due (estimate)', 'Paid', 'Difference'] }];
+    lines.forEach(([label, due, paid]) => data.push({ cells: [label, eur.format(due), paid == null ? '—' : eur.format(paid), diffCell(paid, due)] }));
+    data.push({ cls: 'total', cells: ['Total', eur.format(totalDue), allPaid == null ? '—' : eur.format(allPaid), ''] });
+    const who = married() ? ['you', 'spouse'] : ['you'];
+    const pension = who.reduce((a, p) => a + (Number(yd[p + 'PensionWages']) || 0), 0);
+    const payAndWelfare = who.reduce((a, p) => a + (base.uscPrsiDetail[p] ? base.uscPrsiDetail[p].payBeforePension : 0), 0) + base.totalWelfare;
+    if (payAndWelfare > 0) {
+      const takeHome = r2(payAndWelfare - totalDue - pension);
+      data.push({ cls: 'sub', cells: [pension ? 'Take-home pay (after pension)' : 'Take-home pay', eur.format(takeHome), '', ''] });
+      data.push({ cls: 'muted', cells: ['Share of income taken', `${Math.round((totalDue / payAndWelfare) * 1000) / 10}%`, '', ''] });
+    }
+    rows($('#chargesTable'), data);
+
+    const notes = [];
+    if (married()) notes.push(`USC and PRSI are worked out for each of you: you ${eur.format(base.usc.you)} USC and ${eur.format(base.prsi.you)} PRSI, your spouse ${eur.format(base.usc.spouse)} USC and ${eur.format(base.prsi.spouse)} PRSI.`);
+    who.forEach((p) => {
+      const d = base.uscPrsiDetail[p];
+      if (!d) return;
+      const name = p === 'you' ? 'You' : 'Your spouse';
+      if (d.reducedUsc) notes.push(`${name} pay the reduced USC rate (medical card or age 70+).`);
+      if (d.prsiExempt) notes.push(`${name} pay no PRSI (age 66 or over).`);
+    });
+    if (base.uscPaid != null && base.uscPaid - base.usc.total >= 1) notes.push('You may have overpaid USC. Check you gave the right details (medical card, age), then ask Revenue to review it through myAccount.');
+    notes.push('PRSI is worked out on your average week, so it can differ by a few euro from your payslips.');
+    if (!yd.youPensionWages && !yd.spousePensionWages) notes.push('If pension comes out of your wages, add it under Income & settings: USC and PRSI are charged before it comes off.');
+    $('#chargesNote').textContent = notes.join(' ');
   }
 
   // ---------- Receipts ----------
@@ -366,13 +431,12 @@
     $$('.yr').forEach((n) => { n.textContent = y; });
     const yf = $('#yearForm');
     const yd = state.years[y] || {};
-    ['youGross', 'youTaxPaid', 'youWelfare', 'spouseGross', 'spouseTaxPaid', 'spouseWelfare', 'wfhDays', 'mortgageInterest2022', 'carerIncome']
-      .forEach((k) => { if (document.activeElement !== yf[k]) yf[k].value = yd[k] ?? ''; });
-    yf.homeCarer.checked = !!yd.homeCarer;
+    YEAR_NUMBER_FIELDS.forEach((k) => { if (document.activeElement !== yf[k]) yf[k].value = yd[k] ?? ''; });
+    YEAR_CHECK_FIELDS.forEach((k) => { yf[k].checked = !!yd[k]; });
     $$('.spouse-only').forEach((n) => { n.hidden = !married(); });
     $$('.carer-only').forEach((n) => { n.hidden = !married() || !yd.homeCarer; });
     const monthly = yd.payMode === 'month';
-    ['youGross', 'youTaxPaid', 'spouseGross', 'spouseTaxPaid'].forEach((k) => {
+    MONTH_FIELDS.flatMap(([f]) => ['you', 'spouse'].map((p) => p + YEAR_KEY[f])).forEach((k) => {
       yf[k].readOnly = monthly;
       yf[k].title = monthly ? 'Worked out from your monthly figures' : '';
     });
@@ -394,15 +458,28 @@
     return yd.months[person];
   }
 
+  // Columns of the monthly table and the yearly field each one adds up into.
+  const MONTH_FIELDS = [['gross', 'Pay (taxable / gross) €', 'pay'], ['tax', 'Income tax (PAYE) €', 'income tax'],
+    ['usc', 'USC €', 'USC'], ['prsi', 'PRSI €', 'PRSI']];
+  const YEAR_KEY = { gross: 'Gross', tax: 'TaxPaid', usc: 'UscPaid', prsi: 'PrsiPaid' };
+  const r2 = (n) => Math.round(n * 100) / 100;
+
   function monthTotals(yd, person) {
     const m = (yd.months && yd.months[person]) || {};
-    let gross = 0; let tax = 0; let count = 0;
+    const raw = {}; const has = {};
+    MONTH_FIELDS.forEach(([f]) => { raw[f] = 0; has[f] = false; });
+    let count = 0;
     Object.values(m).forEach((v) => {
       if (Number(v.gross) > 0 || Number(v.tax) > 0) count++;
-      gross += Number(v.gross) || 0; tax += Number(v.tax) || 0;
+      MONTH_FIELDS.forEach(([f]) => {
+        if (v[f] !== '' && v[f] != null) has[f] = true;
+        raw[f] += Number(v[f]) || 0;
+      });
     });
     const factor = yd.project && count > 0 && count < 12 ? 12 / count : 1;
-    return { gross: Math.round(gross * factor * 100) / 100, tax: Math.round(tax * factor * 100) / 100, count, projected: factor !== 1, rawGross: gross, rawTax: tax };
+    const est = {};
+    MONTH_FIELDS.forEach(([f]) => { est[f] = r2(raw[f] * factor); });
+    return { raw, est, has, count, projected: factor !== 1 };
   }
 
   // Copies monthly totals into the yearly figures the tax calculation uses.
@@ -410,16 +487,20 @@
     if (yd.payMode !== 'month') return;
     ['you', 'spouse'].forEach((p) => {
       const t = monthTotals(yd, p);
-      yd[p + 'Gross'] = t.count ? t.gross : '';
-      yd[p + 'TaxPaid'] = t.count ? t.tax : '';
+      MONTH_FIELDS.forEach(([f]) => { yd[p + YEAR_KEY[f]] = t.count && t.has[f] ? t.est[f] : ''; });
     });
+  }
+
+  function saveYearTotals(yd) {
+    yd.yearTotals = {};
+    MONTH_FIELDS.forEach(([f]) => ['you', 'spouse'].forEach((p) => { yd.yearTotals[p + YEAR_KEY[f]] = yd[p + YEAR_KEY[f]]; }));
   }
 
   function setPayMode(mode) {
     const yd = yearData(Number(state.selectedYear));
     if (mode === 'month' && yd.payMode !== 'month') {
       // Keep any yearly totals already typed, in case they switch back.
-      yd.yearTotals = { youGross: yd.youGross, youTaxPaid: yd.youTaxPaid, spouseGross: yd.spouseGross, spouseTaxPaid: yd.spouseTaxPaid };
+      saveYearTotals(yd);
     }
     if (mode === 'year' && yd.payMode === 'month' && yd.yearTotals) Object.assign(yd, yd.yearTotals);
     yd.payMode = mode;
@@ -444,19 +525,18 @@
     const table = $('#monthsTable');
     if (monthsKey !== key) {
       monthsKey = key;
-      const head = el('tr', {}, [el('th', { text: 'Month' }), el('th', { class: 'num', text: 'Pay (taxable / gross) €' }), el('th', { class: 'num', text: 'Income tax (PAYE) €' })]);
+      const head = el('tr', {}, [el('th', { text: 'Month' }), ...MONTH_FIELDS.map(([, label]) => el('th', { class: 'num', text: label }))]);
       const body = MONTH_NAMES.map((name, i) => {
         const m = i + 1;
         const mk = (field) => {
           const input = el('input', { type: 'text', inputmode: 'decimal', autocomplete: 'off', class: 'month-input',
-            id: `m-${field}-${m}`, 'aria-label': `${name} ${field === 'gross' ? 'pay' : 'income tax'}`, 'data-month': m, 'data-field': field });
+            id: `m-${field}-${m}`, 'aria-label': `${name} ${MONTH_FIELDS.find((x) => x[0] === field)[2]}`, 'data-month': m, 'data-field': field });
           input.addEventListener('change', onMonthInput);
           return input;
         };
         return el('tr', { 'data-month': m }, [
           el('td', {}, [name, el('span', { class: 'from-slip', 'data-slip': m })]),
-          el('td', { class: 'num' }, [mk('gross')]),
-          el('td', { class: 'num' }, [mk('tax')]),
+          ...MONTH_FIELDS.map(([f]) => el('td', { class: 'num' }, [mk(f)])),
         ]);
       });
       table.replaceChildren(el('thead', {}, [head]), el('tbody', {}, body), el('tfoot', { id: 'monthsFoot' }));
@@ -470,10 +550,10 @@
     const t = monthTotals(yd, monthPerson);
     const foot = [el('tr', { class: 'total' }, [
       el('td', { text: `Total (${t.count} month${t.count === 1 ? '' : 's'})` }),
-      el('td', { class: 'num', text: eur.format(t.rawGross) }), el('td', { class: 'num', text: eur.format(t.rawTax) })])];
+      ...MONTH_FIELDS.map(([f]) => el('td', { class: 'num', text: eur.format(t.raw[f]) }))])];
     if (t.projected) {
       foot.push(el('tr', { class: 'sub' }, [el('td', { text: 'Estimated full year' }),
-        el('td', { class: 'num', text: eur.format(t.gross) }), el('td', { class: 'num', text: eur.format(t.tax) })]));
+        ...MONTH_FIELDS.map(([f]) => el('td', { class: 'num', text: eur.format(t.est[f]) }))]));
     }
     $('#monthsFoot').replaceChildren(...foot);
     $('#projectWrap').hidden = !(t.count > 0 && t.count < 12);
@@ -489,7 +569,7 @@
     const v = raw === '' ? '' : parseAmount(raw);
     if (Number.isNaN(v)) { inp.classList.add('bad'); inp.title = 'Use numbers, and + to add several'; return; }
     months[m] = Object.assign({}, months[m], { [inp.dataset.field]: v });
-    if (months[m].gross === '' && months[m].tax === '') delete months[m];
+    if (MONTH_FIELDS.every(([f]) => months[m][f] === '' || months[m][f] == null)) delete months[m];
     applyMonthTotals(yd);
     save(); renderAll();
   }
@@ -499,7 +579,9 @@
     const months = monthsOf(yd, monthPerson);
     const first = Object.keys(months).map(Number).sort((a, b) => a - b)[0];
     if (!first) { $('#m-gross-1').focus(); return; }
-    for (let m = 1; m <= 12; m++) if (!months[m]) months[m] = { gross: months[first].gross, tax: months[first].tax };
+    for (let m = 1; m <= 12; m++) {
+      if (!months[m]) months[m] = Object.fromEntries(MONTH_FIELDS.map(([f]) => [f, months[first][f] ?? '']));
+    }
     applyMonthTotals(yd);
     monthsKey = '';
     save(); renderAll();
@@ -552,14 +634,16 @@
     person.value = monthPerson;
     const gross = el('input', { type: 'text', inputmode: 'decimal', id: 'slipGross', value: r.grossPeriod ?? '' });
     const tax = el('input', { type: 'text', inputmode: 'decimal', id: 'slipTax', value: r.taxPeriod ?? '' });
+    const usc = el('input', { type: 'text', inputmode: 'decimal', id: 'slipUsc', value: r.uscPeriod ?? '' });
+    const prsi = el('input', { type: 'text', inputmode: 'decimal', id: 'slipPrsi', value: r.prsiPeriod ?? '' });
     const save2 = (mode) => () => {
-      const g = gross.value.trim() === '' ? 0 : parseAmount(gross.value);
-      const t = tax.value.trim() === '' ? 0 : parseAmount(tax.value);
-      if (Number.isNaN(g) || Number.isNaN(t) || !(g > 0 || t > 0)) { gross.focus(); return; }
+      const read = (inp) => (inp.value.trim() === '' ? 0 : parseAmount(inp.value));
+      const g = read(gross); const t = read(tax); const u = read(usc); const pr = read(prsi);
+      if ([g, t, u, pr].some(Number.isNaN) || !(g > 0 || t > 0)) { gross.focus(); return; }
       const yy = Number(yearSel.value); const mm = Number(month.value); const pp = married() ? person.value : 'you';
       const yd = yearData(yy);
       if (yd.payMode !== 'month') {
-        yd.yearTotals = { youGross: yd.youGross, youTaxPaid: yd.youTaxPaid, spouseGross: yd.spouseGross, spouseTaxPaid: yd.spouseTaxPaid };
+        saveYearTotals(yd);
         yd.payMode = 'month';
       }
       const months = monthsOf(yd, pp);
@@ -568,6 +652,8 @@
       months[mm] = {
         gross: Math.round(((add ? Number(cur.gross) || 0 : 0) + g) * 100) / 100,
         tax: Math.round(((add ? Number(cur.tax) || 0 : 0) + t) * 100) / 100,
+        usc: Math.round(((add ? Number(cur.usc) || 0 : 0) + u) * 100) / 100,
+        prsi: Math.round(((add ? Number(cur.prsi) || 0 : 0) + pr) * 100) / 100,
         fromPayslip: true,
       };
       applyMonthTotals(yd);
@@ -588,6 +674,8 @@
         married() ? el('label', { for: 'slipPerson' }, ['Whose', person]) : '',
         el('label', { for: 'slipGross' }, ['Pay this payslip (€)', gross]),
         el('label', { for: 'slipTax' }, ['Income tax this payslip (€)', tax]),
+        el('label', { for: 'slipUsc' }, ['USC this payslip (€)', usc]),
+        el('label', { for: 'slipPrsi' }, ['PRSI this payslip (€)', prsi]),
       ]),
       freq, ytd,
       el('div', { class: 'actions' }, [
@@ -610,9 +698,8 @@
   function onYearChange(e) {
     const f = e.currentTarget;
     const yd = yearData(Number(state.selectedYear));
-    ['youGross', 'youTaxPaid', 'youWelfare', 'spouseGross', 'spouseTaxPaid', 'spouseWelfare', 'wfhDays', 'mortgageInterest2022', 'carerIncome']
-      .forEach((k) => { yd[k] = f[k].value === '' ? '' : Number(f[k].value); });
-    yd.homeCarer = f.homeCarer.checked;
+    YEAR_NUMBER_FIELDS.forEach((k) => { yd[k] = f[k].value === '' ? '' : Number(f[k].value); });
+    YEAR_CHECK_FIELDS.forEach((k) => { yd[k] = f[k].checked; });
     save(); renderAll();
   }
 
@@ -682,6 +769,13 @@
       const check = (Tax.RATES[y].verifyFields || []).includes(k) || (Tax.RATES[y].verify && k === 'mortgageInterestMax');
       return (v ? eur0.format(v) : '—') + (check && v ? ' (check)' : '');
     })] }));
+    const pct = (n) => `${Math.round(n * 100000) / 1000}%`;
+    const uscText = (y) => {
+      const b = Tax.USC_PRSI[y].usc;
+      return `${pct(b[0][1])} to ${eur0.format(b[0][0])}, ${pct(b[1][1])} to ${eur0.format(b[1][0])}, ${pct(b[2][1])} to ${eur0.format(b[2][0])}, ${pct(b[3][1])} above`;
+    };
+    data.push({ cells: ['USC', ...years.map((y) => uscText(y) + (Tax.USC_PRSI[y].verify ? ' (check)' : ''))] });
+    data.push({ cells: ['Employee PRSI (year average)', ...years.map((y) => pct(Tax.USC_PRSI[y].prsi) + (Tax.USC_PRSI[y].verify || Tax.USC_PRSI[y].verifyPrsi ? ' (check)' : ''))] });
     rows($('#ratesTable'), data);
   }
 
