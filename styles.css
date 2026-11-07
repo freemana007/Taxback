@@ -295,3 +295,35 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .yes-list li::before, .no-list li::before { position: absolute; left: 0; font-weight: 700; }
 .yes-list li::before { content: "✓"; color: var(--accent); }
 .no-list li::before { content: "✕"; color: var(--bad); }
+
+/* ---------- Segmented choices ---------- */
+.seg-group { display: flex; flex-wrap: wrap; gap: .4rem; }
+.seg-group .seg { flex: 0 1 auto; text-align: left; }
+.route-who { max-width: 68ch; margin: .75rem 0; }
+label.button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+label.button:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* ---------- Month-by-month pay ---------- */
+.paymode { margin-bottom: 1rem; }
+#monthsBox { margin-bottom: 1.25rem; display: grid; gap: .5rem; }
+#monthsBox h3, .payslip-panel h3 { margin: 0; font-size: .95rem; }
+#monthsBox p { margin: 0; }
+.months-head { margin: .5rem 0 0; }
+.months td { vertical-align: middle; }
+.months .month-input { width: 9.5rem; max-width: 100%; text-align: right; font-variant-numeric: tabular-nums; }
+.months .month-input.bad { border-color: var(--bad); outline-color: var(--bad); }
+.from-slip { color: var(--muted); font-size: .78rem; }
+.months-actions { align-items: center; }
+.months-actions label.check { display: inline-flex; gap: .5rem; align-items: center; font-size: .9rem; }
+
+.payslip-panel { border: 1px solid var(--border); border-radius: var(--radius); padding: .8rem .9rem; background: var(--row-alt); }
+.payslip-panel .row-between { align-items: flex-start; margin: 0; }
+.payslip-panel .row-between > div { flex: 1 1 260px; min-width: 0; }
+.slip-box { margin-top: .75rem; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: .75rem; display: grid; gap: .6rem; }
+.slip-box p { margin: 0; }
+.slip-box.error { border-color: var(--bad); }
+.slip-box.ok { border-color: var(--accent); }
+.slip-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: .5rem .75rem; }
+.slip-grid label { display: flex; flex-direction: column; gap: .2rem; font-size: .8rem; color: var(--muted); }
+.slip-text { max-height: 14rem; overflow: auto; white-space: pre-wrap; font: 12px/1.4 ui-monospace, Menlo, Consolas, monospace; background: var(--row-alt); padding: .5rem; border-radius: 6px; margin: 0; }
+input[readonly] { background: var(--row-alt); color: var(--muted); cursor: default; }

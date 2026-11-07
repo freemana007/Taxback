@@ -351,6 +351,231 @@
     yf.homeCarer.checked = !!yd.homeCarer;
     $$('.spouse-only').forEach((n) => { n.hidden = !married(); });
     $$('.carer-only').forEach((n) => { n.hidden = !married() || !yd.homeCarer; });
+    const monthly = yd.payMode === 'month';
+    ['youGross', 'youTaxPaid', 'spouseGross', 'spouseTaxPaid'].forEach((k) => {
+      yf[k].readOnly = monthly;
+      yf[k].title = monthly ? 'Worked out from your monthly figures' : '';
+    });
+    $('#modeYear').classList.toggle('on', !monthly); $('#modeYear').setAttribute('aria-pressed', String(!monthly));
+    $('#modeMonth').classList.toggle('on', monthly); $('#modeMonth').setAttribute('aria-pressed', String(monthly));
+    $('#monthsBox').hidden = !monthly;
+    if (monthly) renderMonths();
+  }
+
+  // ---------- Month-by-month pay ----------
+  const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  let monthPerson = 'you';
+  let monthsKey = '';
+
+  function monthsOf(yd, person) {
+    yd.months = yd.months || {};
+    yd.months[person] = yd.months[person] || {};
+    return yd.months[person];
+  }
+
+  function monthTotals(yd, person) {
+    const m = (yd.months && yd.months[person]) || {};
+    let gross = 0; let tax = 0; let count = 0;
+    Object.values(m).forEach((v) => {
+      if (Number(v.gross) > 0 || Number(v.tax) > 0) count++;
+      gross += Number(v.gross) || 0; tax += Number(v.tax) || 0;
+    });
+    const factor = yd.project && count > 0 && count < 12 ? 12 / count : 1;
+    return { gross: Math.round(gross * factor * 100) / 100, tax: Math.round(tax * factor * 100) / 100, count, projected: factor !== 1, rawGross: gross, rawTax: tax };
+  }
+
+  // Copies monthly totals into the yearly figures the tax calculation uses.
+  function applyMonthTotals(yd) {
+    if (yd.payMode !== 'month') return;
+    ['you', 'spouse'].forEach((p) => {
+      const t = monthTotals(yd, p);
+      yd[p + 'Gross'] = t.count ? t.gross : '';
+      yd[p + 'TaxPaid'] = t.count ? t.tax : '';
+    });
+  }
+
+  function setPayMode(mode) {
+    const yd = yearData(Number(state.selectedYear));
+    if (mode === 'month' && yd.payMode !== 'month') {
+      // Keep any yearly totals already typed, in case they switch back.
+      yd.yearTotals = { youGross: yd.youGross, youTaxPaid: yd.youTaxPaid, spouseGross: yd.spouseGross, spouseTaxPaid: yd.spouseTaxPaid };
+    }
+    if (mode === 'year' && yd.payMode === 'month' && yd.yearTotals) Object.assign(yd, yd.yearTotals);
+    yd.payMode = mode;
+    applyMonthTotals(yd);
+    monthsKey = '';
+    save(); renderAll();
+  }
+
+  function fmtNum(v) { return v === '' || v == null ? '' : String(v); }
+
+  function renderMonths() {
+    const y = Number(state.selectedYear);
+    const yd = yearData(y);
+    if (!married()) monthPerson = 'you';
+    $('#monthPerson').hidden = !married();
+    $('#monthPerson').replaceChildren(...[['you', 'You'], ['spouse', 'Spouse']].map(([k, label]) => el('button', {
+      type: 'button', class: 'seg' + (k === monthPerson ? ' on' : ''), 'aria-pressed': String(k === monthPerson), text: label,
+      onclick: () => { monthPerson = k; monthsKey = ''; renderMonths(); },
+    })));
+    const months = monthsOf(yd, monthPerson);
+    const key = `${y}:${monthPerson}`;
+    const table = $('#monthsTable');
+    if (monthsKey !== key) {
+      monthsKey = key;
+      const head = el('tr', {}, [el('th', { text: 'Month' }), el('th', { class: 'num', text: 'Pay (taxable / gross) €' }), el('th', { class: 'num', text: 'Income tax (PAYE) €' })]);
+      const body = MONTH_NAMES.map((name, i) => {
+        const m = i + 1;
+        const mk = (field) => {
+          const input = el('input', { type: 'text', inputmode: 'decimal', autocomplete: 'off', class: 'month-input',
+            id: `m-${field}-${m}`, 'aria-label': `${name} ${field === 'gross' ? 'pay' : 'income tax'}`, 'data-month': m, 'data-field': field });
+          input.addEventListener('change', onMonthInput);
+          return input;
+        };
+        return el('tr', { 'data-month': m }, [
+          el('td', {}, [name, el('span', { class: 'from-slip', 'data-slip': m })]),
+          el('td', { class: 'num' }, [mk('gross')]),
+          el('td', { class: 'num' }, [mk('tax')]),
+        ]);
+      });
+      table.replaceChildren(el('thead', {}, [head]), el('tbody', {}, body), el('tfoot', { id: 'monthsFoot' }));
+    }
+    $$('.month-input', table).forEach((inp) => {
+      const v = months[inp.dataset.month] || {};
+      if (document.activeElement !== inp) inp.value = fmtNum(v[inp.dataset.field]);
+      inp.classList.remove('bad');
+    });
+    $$('.from-slip', table).forEach((n) => { n.textContent = (months[n.dataset.slip] || {}).fromPayslip ? ' · from payslip' : ''; });
+    const t = monthTotals(yd, monthPerson);
+    const foot = [el('tr', { class: 'total' }, [
+      el('td', { text: `Total (${t.count} month${t.count === 1 ? '' : 's'})` }),
+      el('td', { class: 'num', text: eur.format(t.rawGross) }), el('td', { class: 'num', text: eur.format(t.rawTax) })])];
+    if (t.projected) {
+      foot.push(el('tr', { class: 'sub' }, [el('td', { text: 'Estimated full year' }),
+        el('td', { class: 'num', text: eur.format(t.gross) }), el('td', { class: 'num', text: eur.format(t.tax) })]));
+    }
+    $('#monthsFoot').replaceChildren(...foot);
+    $('#projectWrap').hidden = !(t.count > 0 && t.count < 12);
+    $('#projectYear').checked = !!yd.project;
+  }
+
+  function onMonthInput(e) {
+    const inp = e.target;
+    const raw = inp.value.trim();
+    const yd = yearData(Number(state.selectedYear));
+    const months = monthsOf(yd, monthPerson);
+    const m = inp.dataset.month;
+    const v = raw === '' ? '' : parseAmount(raw);
+    if (Number.isNaN(v)) { inp.classList.add('bad'); inp.title = 'Use numbers, and + to add several'; return; }
+    months[m] = Object.assign({}, months[m], { [inp.dataset.field]: v });
+    if (months[m].gross === '' && months[m].tax === '') delete months[m];
+    applyMonthTotals(yd);
+    save(); renderAll();
+  }
+
+  function fillEmptyMonths() {
+    const yd = yearData(Number(state.selectedYear));
+    const months = monthsOf(yd, monthPerson);
+    const first = Object.keys(months).map(Number).sort((a, b) => a - b)[0];
+    if (!first) { $('#m-gross-1').focus(); return; }
+    for (let m = 1; m <= 12; m++) if (!months[m]) months[m] = { gross: months[first].gross, tax: months[first].tax };
+    applyMonthTotals(yd);
+    monthsKey = '';
+    save(); renderAll();
+  }
+
+  // ---------- Payslip upload ----------
+  let pendingFile = null;
+
+  function slipStatus(children, cls) {
+    $('#payslipResult').replaceChildren(el('div', { class: 'slip-box ' + (cls || '') }, children));
+  }
+
+  async function readPayslip(file, password) {
+    pendingFile = file;
+    slipStatus([el('p', { text: `Reading ${file.name}…` })]);
+    try {
+      const r = await Payslip.readFile(file, password);
+      showSlipResult(r, file.name);
+    } catch (e) {
+      if (e.name === 'NeedsPassword') return askSlipPassword(e.message);
+      slipStatus([el('p', { text: e.message })], 'error');
+    }
+  }
+
+  function askSlipPassword(msg) {
+    const pw = el('input', { type: 'password', id: 'slipPassword', autocomplete: 'off' });
+    const open = el('button', { type: 'button', class: 'primary', text: 'Open payslip', onclick: () => readPayslip(pendingFile, pw.value) });
+    pw.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); open.click(); } });
+    slipStatus([
+      el('p', { text: msg }),
+      el('p', { class: 'muted small', text: 'Payslip passwords are often your PPS number or date of birth. Your payroll provider can tell you.' }),
+      el('div', { class: 'calc-row' }, [el('label', { for: 'slipPassword' }, ['Password', pw]), open]),
+    ]);
+    pw.focus();
+  }
+
+  function showSlipResult(r, name) {
+    const foundAny = r.grossPeriod || r.taxPeriod || r.grossYTD || r.taxYTD;
+    const textView = el('details', { class: 'help' }, [el('summary', { text: 'Show the text we read' }),
+      el('pre', { class: 'slip-text', text: r.lines.join('\n') })]);
+    if (!foundAny) {
+      slipStatus([el('p', { text: `We couldn’t find pay or tax figures in ${name}. Type them into the month below instead.` }), textView], 'error');
+      return;
+    }
+    const selYear = Number(state.selectedYear);
+    let year = r.payDate && Tax.YEARS.includes(r.payDate.year) ? r.payDate.year : selYear;
+    const month = el('select', { id: 'slipMonth' }, MONTH_NAMES.map((n, i) => el('option', { value: i + 1, text: n, selected: r.payDate ? r.payDate.month === i + 1 : i === new Date().getMonth() })));
+    const yearSel = el('select', { id: 'slipYear' }, Tax.YEARS.map((yy) => el('option', { value: yy, text: yy, selected: yy === year })));
+    const person = el('select', { id: 'slipPerson' }, [el('option', { value: 'you', text: 'You' }), el('option', { value: 'spouse', text: 'Spouse' })]);
+    person.value = monthPerson;
+    const gross = el('input', { type: 'text', inputmode: 'decimal', id: 'slipGross', value: r.grossPeriod ?? '' });
+    const tax = el('input', { type: 'text', inputmode: 'decimal', id: 'slipTax', value: r.taxPeriod ?? '' });
+    const save2 = (mode) => () => {
+      const g = gross.value.trim() === '' ? 0 : parseAmount(gross.value);
+      const t = tax.value.trim() === '' ? 0 : parseAmount(tax.value);
+      if (Number.isNaN(g) || Number.isNaN(t) || !(g > 0 || t > 0)) { gross.focus(); return; }
+      const yy = Number(yearSel.value); const mm = Number(month.value); const pp = married() ? person.value : 'you';
+      const yd = yearData(yy);
+      if (yd.payMode !== 'month') {
+        yd.yearTotals = { youGross: yd.youGross, youTaxPaid: yd.youTaxPaid, spouseGross: yd.spouseGross, spouseTaxPaid: yd.spouseTaxPaid };
+        yd.payMode = 'month';
+      }
+      const months = monthsOf(yd, pp);
+      const cur = months[mm] || {};
+      const add = mode === 'add';
+      months[mm] = {
+        gross: Math.round(((add ? Number(cur.gross) || 0 : 0) + g) * 100) / 100,
+        tax: Math.round(((add ? Number(cur.tax) || 0 : 0) + t) * 100) / 100,
+        fromPayslip: true,
+      };
+      applyMonthTotals(yd);
+      state.selectedYear = yy; monthPerson = pp; monthsKey = '';
+      save(); renderAll();
+      slipStatus([el('p', { text: `Saved to ${MONTH_NAMES[mm - 1]} ${yy}: pay ${eur.format(months[mm].gross)}, tax ${eur.format(months[mm].tax)}. Choose another payslip to add more.` })], 'ok');
+    };
+    const ytd = (r.grossYTD || r.taxYTD)
+      ? el('p', { class: 'muted small', text: `This payslip also shows year-to-date totals: pay ${r.grossYTD ? eur.format(r.grossYTD) : '—'}, tax ${r.taxYTD ? eur.format(r.taxYTD) : '—'}. On your last payslip of the year, these are your yearly totals.` })
+      : '';
+    const freq = r.frequency && r.frequency !== 'monthly'
+      ? el('p', { class: 'muted small', text: `This looks like a ${r.frequency} payslip. Use “Add to month” for each one so the month adds them up.` }) : '';
+    slipStatus([
+      el('p', {}, [el('strong', { text: 'Check these numbers against your payslip, then save.' }), ` Read from ${name}.`]),
+      el('div', { class: 'slip-grid' }, [
+        el('label', { for: 'slipMonth' }, ['Month', month]),
+        el('label', { for: 'slipYear' }, ['Year', yearSel]),
+        married() ? el('label', { for: 'slipPerson' }, ['Whose', person]) : '',
+        el('label', { for: 'slipGross' }, ['Pay this payslip (€)', gross]),
+        el('label', { for: 'slipTax' }, ['Income tax this payslip (€)', tax]),
+      ]),
+      freq, ytd,
+      el('div', { class: 'actions' }, [
+        el('button', { type: 'button', class: 'primary', text: 'Save to this month', onclick: save2('replace') }),
+        el('button', { type: 'button', text: 'Add to what’s already in this month', onclick: save2('add') }),
+        el('button', { type: 'button', text: 'Cancel', onclick: () => $('#payslipResult').replaceChildren() }),
+      ]),
+      textView,
+    ]);
   }
 
   function onProfileChange(e) {
@@ -713,8 +938,8 @@
       },
       {
         title: `Find your pay and tax for ${y}`,
-        text: 'Two numbers: how much you earned, and how much income tax was taken. Both are on one page in Revenue’s myAccount, or on your last payslip of the year.',
-        need: 'myAccount login, or your December payslip',
+        text: 'Two numbers: how much you earned, and how much income tax was taken. Both are on one page in Revenue’s myAccount or your last payslip of the year. Or enter your pay month by month, or upload PDF payslips and let the app read them.',
+        need: 'myAccount login, or your payslips',
         done: yd.youGross > 0,
         action: ['Enter pay and tax', () => goTo('profile', '#yearForm [name=youGross]')],
       },
@@ -741,8 +966,10 @@
       },
       {
         title: 'Claim it from Revenue',
-        text: 'Copy your totals into myAccount. The steps are below. Tick this when you’ve sent it.',
-        need: 'myAccount login',
+        text: claimRoute() === 'ros'
+          ? 'Enter your totals in your Form 11 tax return on ROS. The steps are below. Tick this when you’ve submitted it.'
+          : 'Copy your totals into myAccount. The steps are below. Tick this when you’ve sent it.',
+        need: claimRoute() === 'ros' ? 'ROS login (digital certificate and password)' : 'myAccount login',
         done: !!state.checklist[claimedKey],
         action: ['Show how to claim', () => $('#claimSteps').scrollIntoView({ behavior: 'smooth' })],
         tick: claimedKey,
@@ -787,11 +1014,25 @@
     }));
   }
 
-  function renderGuideStatic() {
-    $('#claimSteps').replaceChildren(...Guide.CLAIM_STEPS.map((s) => el('li', {}, [
+  function claimRoute() { return state.profile.claimVia === 'ros' ? 'ros' : 'myaccount'; }
+
+  function renderClaimSteps() {
+    const route = claimRoute();
+    $('#routePick').replaceChildren(...Object.entries(Guide.ROUTES).map(([k, r]) => el('button', {
+      type: 'button', class: 'seg' + (k === route ? ' on' : ''), 'aria-pressed': String(k === route), text: r.label,
+      onclick: () => { state.profile.claimVia = k; save(); renderClaimSteps(); renderGuide(); },
+    })));
+    $('#routeWho').replaceChildren(...rich(Guide.ROUTES[route].who));
+    const steps = route === 'ros' ? Guide.ROS_STEPS : Guide.CLAIM_STEPS;
+    $('#claimSteps').replaceChildren(...steps.map((s) => el('li', {}, [
       el('strong', { text: s.title }),
-      el('p', {}, rich(s.text).concat(s.link ? [' ', el('a', { href: s.link, target: '_blank', rel: 'noopener', text: 'Open myAccount' })] : [])),
+      el('p', {}, rich(s.text).concat(s.link ? [' ', el('a', { href: s.link, target: '_blank', rel: 'noopener', text: s.linkText || 'Open myAccount' })] : [])),
     ])));
+    $('#receiptsApp').replaceChildren(...rich(Guide.RECEIPTS_APP));
+  }
+
+  function renderGuideStatic() {
+    renderClaimSteps();
     $('#glossary').replaceChildren(...Guide.GLOSSARY.flatMap(([t, d]) => [el('dt', { text: t }), el('dd', { text: d })]));
   }
 
@@ -829,6 +1070,14 @@
     buildRentCalc();
     renderGuideStatic();
     $('#amountInput').addEventListener('input', updateAmountTotal);
+    $('#modeYear').addEventListener('click', () => setPayMode('year'));
+    $('#modeMonth').addEventListener('click', () => setPayMode('month'));
+    $('#fillMonths').addEventListener('click', fillEmptyMonths);
+    $('#projectYear').addEventListener('change', (e) => {
+      const yd = yearData(Number(state.selectedYear)); yd.project = e.target.checked;
+      applyMonthTotals(yd); save(); renderAll();
+    });
+    $('#payslipFile').addEventListener('change', (e) => { const f = e.target.files[0]; e.target.value = ''; if (f) readPayslip(f); });
     $('#paidBySelect').addEventListener('change', updateFormForCategory);
     $('#yearSelect').addEventListener('change', (e) => selectYear(e.target.value));
     $$('.tabs [role=tab]').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));

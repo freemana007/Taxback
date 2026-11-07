@@ -20,6 +20,16 @@ Or serve it locally: `npm start`, then visit http://localhost:8080.
 - **Help on every field**: "Where do I find this?" boxes say exactly where each
   number is (myAccount page, payslip line, bank statement), with calculators
   for a full year's pay, days worked from home and a year of rent.
+- **Pay month by month or from payslips**: enter pay and tax for each month
+  (weekly pay can be typed as `812 + 812 + 812 + 812`), optionally estimate the
+  full year from the months entered, or choose a PDF payslip and the app reads
+  the pay, tax and pay date from it. Password-protected PDFs are supported.
+  Payslips are read in the browser and never uploaded or stored; pdf.js is
+  loaded from cdnjs the first time a payslip is opened. Photos and scans
+  can't be read.
+- **Two ways to claim**: step-by-step instructions for myAccount (employees)
+  and ROS / Form 11 (self-employed, landlords, directors), with a note on
+  which one applies to you.
 - **Receipt guides**: for each type of receipt, what counts, what doesn't,
   where to find the amount and how to work it out. The amount box adds up
   several bills typed as `85 + 120 + 60`.
@@ -56,7 +66,7 @@ Credits come off your tax bill directly. Deductions reduce taxable income, so
 they are worth 20% or 40% depending on your marginal rate. Each claim's value is
 the difference in tax with and without it.
 
-Rates live in `tax.js` (`RATES`). Help text lives in `guide.js`. Years flagged "check" (2026 and 2027) use
+Rates live in `tax.js` (`RATES`). Help text lives in `guide.js`, and the payslip reader in `payslip.js`. Years flagged "check" (2026 and 2027) use
 budget figures that should be confirmed on revenue.ie.
 
 ## Not covered

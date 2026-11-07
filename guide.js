@@ -34,6 +34,7 @@
       ],
       body: [
         '**No myAccount?** Use your last payslip of the year (December). Look for **Taxable pay to date** or **Gross pay for tax YTD**.',
+        '**Prefer to go month by month?** Choose “Month by month” above. You can type each month’s pay from your payslips, or upload a PDF payslip and the app reads the numbers for you.',
         '**For this year, before it ends:** take “Taxable pay to date” from your latest payslip, divide by the months so far, and multiply by 12. The calculator below does this for you.',
         'Use pay **after** any pension that comes out of your wages. The Employment Detail Summary already shows it that way.',
       ],
@@ -204,6 +205,49 @@
     },
   ];
 
+  // Which online service to claim through.
+  const ROUTES = {
+    myaccount: {
+      label: 'I only have a job or pension (myAccount)',
+      who: 'Use **myAccount** if all your income comes through an employer or a pension, with tax taken from your pay. This is most people.',
+    },
+    ros: {
+      label: 'Self-employed or I file a Form 11 (ROS)',
+      who: 'Use **ROS** (Revenue Online Service) if you file a yearly **Form 11** tax return: for example you are self-employed, a landlord, a company director, or have other income over €5,000 outside your job. If you only have a job, you can’t switch to ROS; use myAccount.',
+    },
+  };
+
+  const ROS_STEPS = [
+    {
+      title: 'Get access to ROS (first time only)',
+      text: 'Go to ros.ie and click **Register for ROS**. Enter your PPS number. Revenue posts you a **ROS Access Number**, usually within about 5 working days. Use it on ros.ie to download your **digital certificate** and choose a password. Keep the certificate file safe: you need it to sign in on that computer.',
+      link: 'https://www.ros.ie/',
+      linkText: 'Open ros.ie',
+    },
+    {
+      title: 'Sign in',
+      text: 'On ros.ie click **Sign in to ROS**, pick your certificate and enter your password.',
+    },
+    {
+      title: 'Check your bank details',
+      text: 'Go to **Admin Services**, then **Manage bank accounts**, and make sure your account is there for refunds.',
+    },
+    {
+      title: 'Open your tax return',
+      text: 'Click **My Services**, then **File a return**. Choose **Income Tax (Form 11)** and the tax year, then **File return online**.',
+    },
+    {
+      title: 'Enter your income and claims',
+      text: 'Fill in your income panels. Then open the **Tax credits and reliefs** panel and the **Health expenses** panel, and enter the totals from this app’s Overview (health expenses, rent, remote working, pension, tuition and so on).',
+    },
+    {
+      title: 'Calculate, sign and submit',
+      text: 'Click **Calculate** to see if you owe tax or have paid too much. Then **Sign and submit** with your ROS password. The deadline is **31 October** of the following year, usually extended to mid-November when you file and pay online. Any overpayment is refunded to your bank account.',
+    },
+  ];
+
+  const RECEIPTS_APP = 'Tip: Revenue’s free **Receipts Tracker** phone app lets you photograph receipts as you go. They’re kept for you, and you can use them when you claim in myAccount.';
+
   const GLOSSARY = [
     ['Tax year', 'Runs from 1 January to 31 December. You can claim for the last 4 years.'],
     ['Gross pay', 'Your pay before tax is taken off.'],
@@ -216,8 +260,11 @@
     ['Jointly assessed', 'A married couple or civil partners taxed together, so they can share credits.'],
     ['Employment Detail Summary', 'A page in myAccount showing your pay and tax for a year. It replaced the P60.'],
     ['Statement of Liability', 'Revenue’s end-of-year summary of the tax you owed and paid. It shows your refund.'],
+    ['ROS', 'Revenue Online Service: Revenue’s website for people who file a Form 11 tax return, such as the self-employed.'],
+    ['Form 11', 'The yearly tax return for self-employed people, landlords and others with income outside a job.'],
+    ['Payslip', 'The statement you get each payday. It shows your pay, the tax taken, and totals for the year so far (“to date” or “YTD”).'],
     ['PPS number', 'Your personal public service number. It is on your payslip and Tax Credit Certificate.'],
   ];
 
-  return { FIELDS, CATEGORIES, QUIZ, CLAIM_STEPS, GLOSSARY, MYACCOUNT };
+  return { FIELDS, CATEGORIES, QUIZ, CLAIM_STEPS, ROUTES, ROS_STEPS, RECEIPTS_APP, GLOSSARY, MYACCOUNT };
 });

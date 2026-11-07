@@ -47,9 +47,12 @@
         <ul class="quiz" id="quiz"></ul>
       </div>
       <div class="card">
-        <h2>How to claim on myAccount</h2>
-        <p class="muted small">myAccount is Revenue's free website. Claiming takes about 15 minutes once you have your numbers.</p>
+        <h2>How to claim your refund</h2>
+        <p class="muted small">Revenue has two websites for claiming. Pick the one that fits you.</p>
+        <div class="seg-group" role="group" aria-label="How you file" id="routePick"></div>
+        <p class="route-who" id="routeWho"></p>
         <ol class="claim-steps" id="claimSteps"></ol>
+        <p class="muted small" id="receiptsApp"></p>
       </div>
       <div class="card">
         <h2>Words you'll see</h2>
@@ -161,6 +164,36 @@
       <div class="card">
         <h2>Tax year <span class="yr"></span></h2>
         <p class="muted small">Not sure where a number comes from? Open “Where do I find this?” under it. Changes save as you type.</p>
+        <div class="paymode">
+          <p class="calc-title" id="payModeLabel">How do you want to enter your pay?</p>
+          <div class="seg-group" role="group" aria-labelledby="payModeLabel">
+            <button type="button" class="seg" data-mode="year" id="modeYear">One total for the year</button>
+            <button type="button" class="seg" data-mode="month" id="modeMonth">Month by month</button>
+          </div>
+        </div>
+        <div id="monthsBox" hidden>
+          <div class="payslip-panel" id="payslipPanel">
+            <div class="row-between">
+              <div>
+                <h3>Read a payslip</h3>
+                <p class="muted small">Pick a PDF payslip and the app finds the pay and tax on it. It's read on this device only; the file isn't saved or sent anywhere.</p>
+              </div>
+              <label class="button primary" for="payslipFile">Choose payslip PDF</label>
+              <input id="payslipFile" type="file" accept="application/pdf,.pdf,image/*" hidden>
+            </div>
+            <div id="payslipResult"></div>
+          </div>
+          <div class="months-head row-between">
+            <h3>Pay for each month</h3>
+            <div class="seg-group person-tabs" id="monthPerson" role="group" aria-label="Whose pay"></div>
+          </div>
+          <p class="muted small">Copy “Taxable pay” (or “Gross pay”) and “PAYE” (income tax) from each payslip. Paid weekly? Type each week with + between, like 812 + 812 + 812 + 812.</p>
+          <div class="scroll"><table class="tbl months" id="monthsTable"></table></div>
+          <div class="actions months-actions">
+            <button type="button" id="fillMonths">Copy first month to empty months</button>
+            <label class="check" id="projectWrap"><input type="checkbox" id="projectYear"> Estimate the full year from the months I've entered</label>
+          </div>
+        </div>
         <form id="yearForm" class="form">
           <label>Your gross pay (€)
             <input name="youGross" type="number" step="0.01" min="0" inputmode="decimal">
@@ -237,6 +270,7 @@
 
   <script src="tax.js"></script>
   <script src="guide.js"></script>
+  <script src="payslip.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
