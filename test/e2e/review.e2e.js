@@ -213,7 +213,8 @@ describe('sync across devices', () => {
     await p.click('[data-tab=expenses]');
     await p.fill('#amountInput', '80');
     await p.click('#expSubmit');
-    await p.waitForFunction(() => window.__writes.length > 0, null, { timeout: 5000 });
+    // the save that includes the new receipt (an earlier one may store the merged copy)
+    await p.waitForFunction(() => window.__writes.some((w) => JSON.parse(w.state).expenses.length === 2), null, { timeout: 5000 });
     const written = await p.evaluate(() => JSON.parse(window.__writes[window.__writes.length - 1].state));
     assert.equal(written.expenses.length, 2);
     // a change from another device arrives live

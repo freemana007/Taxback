@@ -1954,7 +1954,11 @@
     setSync('off');
   }
 
-  function hasData() { return state.expenses.length > 0 || Object.keys(state.years).length > 0; }
+  // Real entries only: viewing a year or the Review tab creates empty records.
+  function hasData() {
+    const filledIn = (v) => (v && typeof v === 'object' ? Object.values(v).some(filledIn) : v !== '' && v != null && v !== false);
+    return state.expenses.length > 0 || filledIn(state.years);
+  }
 
   // Combine the synced copy with this device's copy, so neither side's work is
   // lost: receipts are merged by id, deleted ones stay deleted, and for other
