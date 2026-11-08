@@ -1,0 +1,491 @@
+<!doctype html>
+<html lang="en-IE">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Taxback</title>
+  <meta name="description" content="Track tax receipts, estimate Irish PAYE refunds and watch claim deadlines. Data stays in your browser.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Figtree:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <script>
+    // Apply the saved colour scheme before anything is drawn, so there's no flash.
+    (function () {
+      var root = document.documentElement;
+      window.__hostTheme = root.getAttribute('data-theme');
+      try {
+        var a = JSON.parse(localStorage.getItem('taxback.appearance') || '{}');
+        if (a.mode === 'light' || a.mode === 'dark') root.setAttribute('data-theme', a.mode);
+        if (a.accent && a.accent !== 'green') root.setAttribute('data-accent', a.accent);
+      } catch (e) { /* use the defaults */ }
+    })();
+  </script>
+  <header class="top">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">
+        <svg viewBox="0 0 32 32" width="32" height="32"><path d="M7 4h18v24l-3-2-3 2-3-2-3 2-3-2-3 2z" fill="currentColor"/><path d="M19.5 12.2a4.2 4.2 0 1 0 0 7.6M12 14.6h6M12 17.4h6" fill="none" stroke="var(--logo-ink)" stroke-width="1.8" stroke-linecap="round"/></svg>
+      </span>
+      <div>
+        <h1>Taxback</h1>
+        <p class="sub">Your Irish tax, sorted</p>
+      </div>
+    </div>
+    <div class="top-actions">
+      <label class="year-pick"><span>Tax year</span>
+        <select id="yearSelect"></select>
+      </label>
+      <button type="button" class="icon-btn" id="appearanceBtn" aria-label="Appearance" title="Appearance"
+        aria-haspopup="dialog" aria-expanded="false" aria-controls="appearancePanel"></button>
+    </div>
+    <div class="appearance" id="appearancePanel" role="dialog" aria-label="Appearance" hidden>
+      <h2>Appearance</h2>
+      <p class="appearance-label" id="modeLabel">Mode</p>
+      <div class="seg-group" role="group" aria-labelledby="modeLabel" id="modePick">
+        <button type="button" class="seg" data-mode="system">System</button>
+        <button type="button" class="seg" data-mode="light">Light</button>
+        <button type="button" class="seg" data-mode="dark">Dark</button>
+      </div>
+      <p class="appearance-label" id="accentLabel">Colour</p>
+      <div class="swatches" role="group" aria-labelledby="accentLabel" id="accentPick">
+        <button type="button" class="swatch" data-accent="green" aria-label="Green"><span class="swatch-dot"></span><span>Green</span></button>
+        <button type="button" class="swatch" data-accent="blue" aria-label="Blue"><span class="swatch-dot"></span><span>Blue</span></button>
+        <button type="button" class="swatch" data-accent="violet" aria-label="Violet"><span class="swatch-dot"></span><span>Violet</span></button>
+        <button type="button" class="swatch" data-accent="amber" aria-label="Amber"><span class="swatch-dot"></span><span>Amber</span></button>
+      </div>
+      <p class="muted small">Saved on this device. “System” follows your phone or computer’s light or dark setting.</p>
+    </div>
+  </header>
+
+  <div class="shell">
+  <nav class="tabs" role="tablist" aria-label="Sections">
+    <button role="tab" data-tab="dashboard" data-icon="home" aria-selected="true"><span class="tab-label">Home</span></button>
+    <button role="tab" data-tab="expenses" data-icon="receipt"><span class="tab-label">Receipts</span></button>
+    <button role="tab" data-tab="profile" data-icon="wallet"><span class="tab-label">Income</span></button>
+    <button role="tab" data-tab="review" data-icon="search"><span class="tab-label">Review</span></button>
+    <span class="nav-divider" aria-hidden="true"></span>
+    <button role="tab" class="nav-secondary" data-tab="guide" data-icon="list"><span class="tab-label">Claim guide</span></button>
+    <button role="tab" class="nav-secondary" data-tab="checklist" data-icon="check"><span class="tab-label">Checklist</span></button>
+    <button role="tab" class="nav-secondary" data-tab="help" data-icon="help"><span class="tab-label">Help</span></button>
+    <button role="tab" class="nav-secondary" data-tab="data" data-icon="shield"><span class="tab-label">Backup</span></button>
+    <button type="button" class="nav-more" id="moreBtn" data-icon="more" aria-haspopup="true" aria-expanded="false" aria-controls="moreSheet"><span class="tab-label">More</span></button>
+  </nav>
+  <div class="more-sheet" id="moreSheet" role="menu" aria-label="More" hidden></div>
+
+  <main>
+    <div id="deadlineBanner"></div>
+
+    <!-- START HERE -->
+    <section id="tab-guide" class="tab" hidden>
+      <div class="page-head">
+        <h2>Claim guide</h2>
+        <p class="muted">Find what you can claim for <strong class="yr"></strong>, then send it to Revenue.</p>
+      </div>
+      <div class="card" id="quizCard">
+        <h2>What can I claim?</h2>
+        <p class="muted small">Answer yes or no. Every “yes” is money you can probably get back.</p>
+        <ul class="quiz" id="quiz"></ul>
+      </div>
+      <div class="card">
+        <h2>How to claim your refund</h2>
+        <p class="muted small">Revenue has two websites for claiming. Pick the one that fits you.</p>
+        <div class="seg-group" role="group" aria-label="How you file" id="routePick"></div>
+        <p class="route-who" id="routeWho"></p>
+        <div class="sheet" id="claimSheet"></div>
+        <ol class="claim-steps" id="claimSteps"></ol>
+        <p class="muted small" id="receiptsApp"></p>
+      </div>
+    </section>
+
+    <!-- OVERVIEW -->
+    <section id="tab-dashboard" class="tab">
+      <div class="hero">
+        <p class="hero-eyebrow" id="heroEyebrow"></p>
+        <div class="hero-empty" id="heroEmpty" hidden>
+          <h2>Let’s find your refund</h2>
+          <p>Most people who work for an employer are owed something back. You don’t need to know anything about tax. It takes about 10 minutes.</p>
+        </div>
+        <div class="stats" id="stats"></div>
+        <div class="hero-foot" id="heroNext"></div>
+      </div>
+      <p class="notice" id="yearNote" hidden></p>
+      <div class="steps-wrap">
+        <h2 class="section-title">Your steps</h2>
+        <ol class="steps" id="guideSteps"></ol>
+      </div>
+      <div class="grid2 detail">
+        <div class="card">
+          <h2>What your claims are worth</h2>
+          <p class="muted small">Tax saved by each relief for the selected year, based on your income and receipts.</p>
+          <table class="tbl" id="claimTable"></table>
+        </div>
+        <div class="card statement">
+          <div class="statement-head">
+            <h2>Tax calculation</h2>
+            <span class="statement-tag">Estimate</span>
+          </div>
+          <table class="tbl" id="calcTable"></table>
+        </div>
+      </div>
+      <div class="card detail">
+        <h2>Income tax, USC and PRSI</h2>
+        <p class="muted small">Everything taken from your pay for the year. Tax claims only reduce income tax; USC and PRSI don't change.</p>
+        <div class="scroll"><table class="tbl stack" id="chargesTable"></table></div>
+        <p class="muted small" id="chargesNote"></p>
+      </div>
+      <div class="card" id="saveCard">
+        <h2>Ways to pay less</h2>
+        <div id="saveTips"></div>
+      </div>
+      <div class="card detail">
+        <h2>All open years</h2>
+        <p class="muted small">You can claim back up to 4 years. Each year closes on 31 December, four years later.</p>
+        <div class="scroll"><table class="tbl stack" id="yearsTable"></table></div>
+      </div>
+    </section>
+
+    <!-- HELP -->
+    <section id="tab-help" class="tab" hidden>
+      <div class="page-head">
+        <h2>Help</h2>
+        <p class="muted">Life changes, reminders and the words you’ll see.</p>
+      </div>
+      <div class="card">
+        <h2>When life changes</h2>
+        <p class="muted small">How common changes affect your tax, and what to do.</p>
+        <div class="accordion" id="lifeEvents"></div>
+      </div>
+      <div class="card">
+        <h2>Reminders</h2>
+        <p class="muted small">Add the dates that matter to your calendar.</p>
+        <ul class="reminders" id="reminders"></ul>
+      </div>
+      <div class="card">
+        <h2>Words you'll see</h2>
+        <dl class="glossary" id="glossary"></dl>
+      </div>
+    </section>
+
+    <!-- RECEIPTS -->
+    <section id="tab-expenses" class="tab" hidden>
+      <div class="card">
+        <h2>Add a receipt</h2>
+        <p class="muted small">What did you pay for?</p>
+        <div class="cat-tiles" id="catTiles" role="group" aria-label="Receipt type"></div>
+        <form id="expenseForm" class="form">
+          <label class="sr-only">Category
+            <select name="category" id="catSelect" required tabindex="-1" aria-hidden="true"></select>
+          </label>
+          <label>Amount (€)
+            <input name="amount" id="amountInput" type="text" required inputmode="decimal" autocomplete="off" placeholder="e.g. 60 or 60 + 45 + 120">
+            <span class="amount-total" id="amountTotal"></span>
+          </label>
+          <label>Date
+            <input name="date" type="date" required>
+          </label>
+          <label class="person-field">Whose
+            <select name="person">
+              <option value="you">You</option>
+              <option value="spouse">Spouse</option>
+            </select>
+          </label>
+          <label class="wide">Description
+            <input name="description" type="text" placeholder="e.g. Dr Murphy, physio, Bord Gáis bill" maxlength="120">
+          </label>
+          <label class="med-only" hidden>Who pays it?
+            <select name="paidBy" id="paidBySelect">
+              <option value="">Choose…</option>
+              <option value="employer">My employer pays it</option>
+              <option value="self">I pay it myself</option>
+            </select>
+          </label>
+          <label class="med-only" hidden>Adults covered
+            <input name="adults" type="number" min="0" step="1" value="1">
+          </label>
+          <label class="med-only" hidden>Children covered
+            <input name="children" type="number" min="0" step="1" value="0">
+          </label>
+          <label class="check tuition-only" hidden>
+            <input name="partTime" type="checkbox"> Part-time course
+          </label>
+          <p class="notice wide" id="medSelfNotice" hidden>You pay this yourself, so your insurer already took 20% off the price. There is nothing more to claim, and you don't need to add it.</p>
+          <div class="calc wide rent-only" id="rentCalc" hidden></div>
+          <div class="wide photo-row">
+            <label class="button" for="photoInput">Add a photo of the receipt</label>
+            <input id="photoInput" type="file" accept="image/*" capture="environment" hidden>
+            <span class="photo-preview" id="photoPreview"></span>
+          </div>
+          <div class="cat-guide wide" id="catGuide"></div>
+          <div class="wide actions">
+            <button type="submit" class="primary" id="expSubmit">Add receipt</button>
+            <button type="button" id="expCancel" hidden>Cancel edit</button>
+          </div>
+        </form>
+      </div>
+      <div class="card">
+        <div class="row-between">
+          <h2>Receipts for <span id="expYearLabel"></span></h2>
+          <label class="inline">Show
+            <select id="expFilter"><option value="">All categories</option></select>
+          </label>
+        </div>
+        <div id="expenseList"></div>
+      </div>
+    </section>
+
+    <!-- PROFILE -->
+    <section id="tab-profile" class="tab" hidden>
+      <div class="card">
+        <h2>You</h2>
+        <form id="profileForm" class="form">
+          <label>Assessment
+            <select name="status">
+              <option value="single">Single</option>
+              <option value="married">Married / civil partners, jointly assessed</option>
+              <option value="widowed">Widowed / surviving civil partner</option>
+            </select>
+          </label>
+          <label>Your date of birth
+            <input name="youDob" type="date">
+          </label>
+          <label class="spouse-only">Spouse's date of birth
+            <input name="spouseDob" type="date">
+          </label>
+          <label class="widowed-only">Year your spouse or partner died
+            <input name="bereavementYear" type="number" min="1990" max="2030" step="1" inputmode="numeric">
+          </label>
+          <label class="check not-married-only opt opt-children">
+            <input name="singleParent" type="checkbox"> A child lives with me for most of the year
+          </label>
+          <label class="opt opt-children">Number of dependent children
+            <input name="children" type="number" min="0" max="20" step="1" inputmode="numeric">
+          </label>
+          <label class="check opt opt-blind">
+            <input name="blindYou" type="checkbox"> I’m blind or severely visually impaired
+          </label>
+          <label class="check spouse-only opt opt-blind">
+            <input name="blindSpouse" type="checkbox"> My spouse is blind or severely visually impaired
+          </label>
+          <label class="opt opt-children">Children with a permanent incapacity
+            <input name="incapChildren" type="number" min="0" max="10" step="1" inputmode="numeric">
+          </label>
+          <label class="opt opt-relative">Dependent relatives I support
+            <input name="depRelatives" type="number" min="0" max="10" step="1" inputmode="numeric">
+          </label>
+        </form>
+      </div>
+      <div class="card" id="situationCard">
+        <h2>Does any of this apply to you?</h2>
+        <p class="muted small">Tap what applies and we’ll ask a little more. Each can be worth money back. Skip anything that doesn’t.</p>
+        <div class="opt-chips" id="optChips"></div>
+      </div>
+      <div class="card">
+        <h2>Tax year <span class="yr"></span></h2>
+        <p class="muted small">Not sure where a number comes from? Open “Where do I find this?” under it. Changes save as you type.</p>
+        <div class="paymode">
+          <p class="calc-title" id="payModeLabel">How do you want to enter your pay?</p>
+          <div class="seg-group" role="group" aria-labelledby="payModeLabel">
+            <button type="button" class="seg" data-mode="year" id="modeYear">One total for the year</button>
+            <button type="button" class="seg" data-mode="month" id="modeMonth">Month by month</button>
+          </div>
+        </div>
+        <div id="monthsBox" hidden>
+          <div class="payslip-panel" id="payslipPanel">
+            <div class="row-between">
+              <div>
+                <h3>Read a payslip</h3>
+                <p class="muted small">Pick a PDF payslip and the app finds the pay and tax on it. It's read on this device only; the file isn't saved or sent anywhere.</p>
+              </div>
+              <label class="button primary" for="payslipFile">Choose payslip PDF</label>
+              <input id="payslipFile" type="file" accept="application/pdf,.pdf,image/*" hidden>
+            </div>
+            <div id="payslipResult"></div>
+          </div>
+          <div class="months-head row-between">
+            <h3>Pay for each month</h3>
+            <div class="seg-group person-tabs" id="monthPerson" role="group" aria-label="Whose pay"></div>
+          </div>
+          <p class="muted small">Copy “Taxable pay” (or “Gross pay”), “PAYE” (income tax), “USC” and “PRSI” from each payslip. Only pay and income tax are needed. Paid weekly? Type each week with + between, like 812 + 812 + 812 + 812.</p>
+          <div class="scroll"><table class="tbl months" id="monthsTable"></table></div>
+          <div class="actions months-actions">
+            <button type="button" id="fillMonths">Copy first month to empty months</button>
+            <label class="check" id="projectWrap"><input type="checkbox" id="projectYear"> Estimate the full year from the months I've entered</label>
+          </div>
+        </div>
+        <form id="yearForm" class="form">
+          <label>Your gross pay (€)
+            <input name="youGross" type="number" step="0.01" min="0" inputmode="decimal">
+          </label>
+          <label>Your income tax paid (€)
+            <input name="youTaxPaid" type="number" step="0.01" min="0" inputmode="decimal">
+          </label>
+          <label class="opt opt-welfare">Your taxable social welfare (€)
+            <input name="youWelfare" type="number" step="0.01" min="0" inputmode="decimal">
+          </label>
+          <label class="spouse-only">Spouse's gross pay (€)
+            <input name="spouseGross" type="number" step="0.01" min="0" inputmode="decimal">
+          </label>
+          <label class="spouse-only">Spouse's income tax paid (€)
+            <input name="spouseTaxPaid" type="number" step="0.01" min="0" inputmode="decimal">
+          </label>
+          <label class="spouse-only opt opt-welfare">Spouse's taxable social welfare (€)
+            <input name="spouseWelfare" type="number" step="0.01" min="0" inputmode="decimal">
+          </label>
+          <h3 class="wide form-sub opt opt-uscprsi">Check your USC and PRSI</h3>
+          <p class="hint wide opt opt-uscprsi">The app works these out from your pay. Add what you paid to see if it was right.</p>
+          <label class="opt opt-uscprsi">Pension taken from your wages (€)
+            <input name="youPensionWages" type="number" step="0.01" min="0" inputmode="decimal">
+          </label>
+          <label class="opt opt-uscprsi">USC you paid (€)
+            <input name="youUscPaid" type="number" step="0.01" min="0" inputmode="decimal">
+          </label>
+          <label class="opt opt-uscprsi">PRSI you paid (€)
+            <input name="youPrsiPaid" type="number" step="0.01" min="0" inputmode="decimal">
+          </label>
+          <label class="check opt opt-uscprsi">
+            <input name="youMedicalCard" type="checkbox"> I have a full medical card
+          </label>
+          <label class="spouse-only opt opt-uscprsi">Pension taken from spouse's wages (€)
+            <input name="spousePensionWages" type="number" step="0.01" min="0" inputmode="decimal">
+          </label>
+          <label class="spouse-only opt opt-uscprsi">USC spouse paid (€)
+            <input name="spouseUscPaid" type="number" step="0.01" min="0" inputmode="decimal">
+          </label>
+          <label class="spouse-only opt opt-uscprsi">PRSI spouse paid (€)
+            <input name="spousePrsiPaid" type="number" step="0.01" min="0" inputmode="decimal">
+          </label>
+          <label class="check spouse-only opt opt-uscprsi">
+            <input name="spouseMedicalCard" type="checkbox"> My spouse has a full medical card
+          </label>
+          <label class="opt opt-wfh">Days worked from home
+            <input name="wfhDays" type="number" min="0" max="366" step="1">
+          </label>
+          <label class="opt opt-mortgage">Mortgage interest paid in 2022 (€)
+            <input name="mortgageInterest2022" type="number" step="0.01" min="0" inputmode="decimal">
+          </label>
+          <label class="check spouse-only opt opt-carer">
+            <input name="homeCarer" type="checkbox"> One of us is a home carer
+          </label>
+          <label class="spouse-only carer-only opt opt-carer">Home carer's own income (€)
+            <input name="carerIncome" type="number" step="0.01" min="0" inputmode="decimal">
+          </label>
+          
+        </form>
+      </div>
+    </section>
+
+    <!-- CHECKLIST -->
+    <section id="tab-checklist" class="tab" hidden>
+      <div id="checklist"></div>
+      <div class="card">
+        <h2>Benefits from work: are they taxed?</h2>
+        <dl class="glossary" id="benefits"></dl>
+      </div>
+    </section>
+
+    <!-- REVIEW -->
+    <section id="tab-review" class="tab" hidden>
+      <div class="card intro">
+        <h2>Is your tax right this year?</h2>
+        <p>Check the credits Revenue gave your employer, spot emergency tax, and test each payslip. Most people who overpay find the cause here.</p>
+        <p class="muted small">Reviewing tax year <strong class="yr"></strong>.</p>
+      </div>
+      <div class="card" id="tccCard">
+        <div class="row-between">
+          <h2>Tax Credit Certificate</h2>
+          <div class="seg-group person-tabs" id="tccPerson" role="group" aria-label="Whose certificate"></div>
+        </div>
+        <p class="muted small">In myAccount: PAYE Services → <strong>View tax credit certificate</strong> → pick the year. For each job, copy the yearly <strong>tax credits</strong>, the yearly <strong>rate band</strong> (also called the cut-off point) and the <strong>basis</strong>.</p>
+        <div id="tccJobs"></div>
+        <div class="actions"><button type="button" id="addJob">Add a job</button></div>
+        <div id="tccResult"></div>
+      </div>
+      <div class="card" id="emergencyCard" hidden></div>
+      <div class="card">
+        <h2>Payslip check</h2>
+        <p class="muted small">Works out the income tax each payslip should take, using your certificate, and compares it with what was taken. Needs your pay entered month by month under Income.</p>
+        <div id="payslipCheck"></div>
+      </div>
+      <div class="card" id="assessCard" hidden>
+        <h2>Taxed together or separately?</h2>
+        <div id="assessResult"></div>
+      </div>
+      <div class="card">
+        <h2>Check Revenue’s Statement of Liability</h2>
+        <p class="muted small">After you claim, Revenue sends a Statement of Liability. Enter its figures (or read the PDF) to compare with this app.</p>
+        <div class="actions">
+          <label class="button" for="solFile">Read Statement PDF</label>
+          <input id="solFile" type="file" accept="application/pdf,.pdf" hidden>
+        </div>
+        <form id="solForm" class="form">
+          <label>Total income (€)<input name="solIncome" type="number" step="0.01" min="0" inputmode="decimal"></label>
+          <label>Total tax credits (€)<input name="solCredits" type="number" step="0.01" min="0" inputmode="decimal"></label>
+          <label>Tax liability after credits (€)<input name="solLiability" type="number" step="0.01" min="0" inputmode="decimal"></label>
+          <label>Tax paid (€)<input name="solPaid" type="number" step="0.01" min="0" inputmode="decimal"></label>
+        </form>
+        <div id="solResult"></div>
+      </div>
+    </section>
+
+    <!-- DATA -->
+    <section id="tab-data" class="tab" hidden>
+      <div class="card">
+        <h2>Your data</h2>
+        <div class="sync-box" id="syncBox">
+          <div>
+            <strong id="syncTitle">Sync across your devices</strong>
+            <p class="muted small" id="syncText">Checking…</p>
+          </div>
+          <label class="switch"><input type="checkbox" id="syncToggle"> <span>Sync</span></label>
+        </div>
+        <p class="muted small">Receipt photos stay on the device you took them on. Copy a backup now and then, especially before clearing your browser.</p>
+        <div class="actions">
+          <button type="button" id="exportBtn" class="primary">Show backup</button>
+          <button type="button" id="exportCsvBtn">Show receipts as CSV</button>
+          <label class="button" for="importFile">Load backup file</label>
+          <input id="importFile" type="file" accept="application/json,.json" hidden>
+        </div>
+        <label class="box-label" for="dataBox">Backup text. Copy it somewhere safe, or paste a backup here to restore it.</label>
+        <textarea id="dataBox" rows="8" spellcheck="false" placeholder="Click “Show backup”, or paste a backup to restore."></textarea>
+        <div class="actions">
+          <button type="button" id="copyBtn">Copy</button>
+          <button type="button" id="downloadBtn">Download as file</button>
+          <button type="button" id="restoreBtn">Restore from text</button>
+          <button type="button" id="resetBtn" class="danger">Delete all data</button>
+        </div>
+        <p class="status" id="dataStatus" role="status" aria-live="polite"></p>
+      </div>
+      <div class="card">
+        <h2>Rates used</h2>
+        <p class="muted small">Years marked “check” use figures that should be confirmed on revenue.ie. Figures live in <code>tax.js</code>.</p>
+        <div class="scroll"><table class="tbl" id="ratesTable"></table></div>
+      </div>
+      <div class="card">
+        <h2>What this does not cover</h2>
+        <ul class="small">
+          <li>PRSI for the self-employed (Class S) and the USC surcharge on self-employed income over €100,000. Employee PRSI is worked out on your average week, so it can differ by a few euro from your payslips.</li>
+          <li>Self-assessed (Form 11) income, rental income, Rent-a-Room relief, Help to Buy.</li>
+          <li>Separate or single assessment of married couples, widowed or single-parent credits.</li>
+          <li>Dependent relative credit and other less common credits.</li>
+        </ul>
+        <p class="small muted">This is an estimate to help you organise your claims. It isn't tax advice; check anything sizeable with Revenue or an accountant.</p>
+      </div>
+    </section>
+  </main>
+  </div>
+
+  <button type="button" class="fab" id="fab" hidden>
+    <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+    <span>Add receipt</span>
+  </button>
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+  <script src="tax.js"></script>
+  <script src="state.js"></script>
+  <script src="guide.js"></script>
+  <script src="payslip.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

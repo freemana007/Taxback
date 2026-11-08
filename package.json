@@ -1,0 +1,12 @@
+{
+  "name": "taxback",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Personal Irish PAYE tax manager: track receipts, estimate refunds, watch claim deadlines.",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "start": "python3 -m http.server 8080",
+    "build": "node scripts/build-single.js",
+    "test:e2e": "node --test --test-concurrency=1 test/e2e/*.e2e.js"
+  }
+}
