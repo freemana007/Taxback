@@ -384,3 +384,28 @@ test('suggested credit and band split for a couple', () => {
     people: { you: { gross: 40000 }, spouse: { gross: 30000 } } });
   assert.deepEqual([t.you.band, t.spouse.band], [40000, 13000 + 30000]);
 });
+
+// ---------- Fixes from the PR review ----------
+test('pension taken from wages uses up part of the age limit', () => {
+  // age 25 → 15% × 50,000 = 7,500 limit; 5,000 already from wages → only 2,500 of a 5,000 AVC counts
+  const r = Tax.computeYear(single(2025, 50000, [exp(2025, 'pension', 5000)], { people: { you: { gross: 50000, pensionFromWages: 5000, dob: '2000-06-01' } } }));
+  assert.equal(r.deductions.pension, 2500);
+  assert.equal(r.detail.pension.you.fromWages, 5000);
+  // wages already over the limit: nothing more
+  const over = Tax.computeYear(single(2025, 50000, [exp(2025, 'pension', 1000)], { people: { you: { gross: 50000, pensionFromWages: 9000, dob: '2000-06-01' } } }));
+  assert.equal(over.deductions.pension, 0);
+});
+
+test('age is read from the date of birth whatever the time zone', () => {
+  assert.equal(Tax.ageAtYearEnd('1960-01-01', 2025), 65);
+  assert.equal(Tax.ageAtYearEnd('1960-12-31', 2025), 65);
+  const { execFileSync } = require('child_process');
+  const out = execFileSync(process.execPath, ['-e', "console.log(require('./tax.js').ageAtYearEnd('1960-01-01', 2025))"],
+    { cwd: require('path').join(__dirname, '..'), env: Object.assign({}, process.env, { TZ: 'America/New_York' }) }).toString().trim();
+  assert.equal(out, '65');
+});
+
+test('pension receipts marked as a spouse’s still count after switching to single', () => {
+  const r = Tax.computeYear(single(2025, 60000, [exp(2025, 'pension', 2000, { person: 'spouse' })]));
+  assert.equal(r.deductions.pension, 2000);
+});

@@ -99,3 +99,23 @@ test('Statement of Liability figures', () => {
   ]);
   assert.deepEqual([r.income, r.credits, r.liability, r.paid, r.overpaid], [52300, 4274.1, 7445.9, 8120, 674.1]);
 });
+
+// ---------- Fixes from the PR review ----------
+test('pay date beats the pay period, and a period uses its end date', () => {
+  assert.deepEqual(P.parseDate('Pay Period 25/02/2025 - 24/03/2025\nPay Date 28/03/2025'), { year: 2025, month: 3, day: 28 });
+  assert.deepEqual(P.parseDate('Pay Period 25/12/2024 - 24/01/2025'), { year: 2025, month: 1, day: 24 });
+  assert.deepEqual(P.parseDate('Period ending 31.01.2025'), { year: 2025, month: 1, day: 31 });
+});
+
+test('years, hours and counts are not read as money', () => {
+  const r = P.parseText(['Tax 2025 612.00', 'Gross Pay 3,500.00 Hours 160.00']);
+  assert.equal(r.taxPeriod, 612);
+  assert.equal(r.grossPeriod, 3500);
+  assert.equal(r.grossYTD, null);
+});
+
+test('"this period … year to date …" on one line is split correctly', () => {
+  const r = P.parseText(['Income Tax Paid this period 612.00 Year to date 7,344.00']);
+  assert.equal(r.taxPeriod, 612);
+  assert.equal(r.taxYTD, 7344);
+});

@@ -12,7 +12,14 @@
   'use strict';
 
   const PDFJS_VERSION = '3.11.174';
-  const PDFJS_BASE = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDFJS_VERSION}/`;
+  // jsDelivr's npm mirror serves the published package files byte for byte, so
+  // these integrity hashes (from pdfjs-dist@3.11.174) let the browser refuse a
+  // file that has been changed.
+  const PDFJS_BASE = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_VERSION}/build/`;
+  const PDFJS_SRI = {
+    'pdf.min.js': 'sha384-/1qUCSGwTur9vjf/z9lmu/eCUYbpOTgSjmpbMQZ1/CtX2v/WcAIKqRv+U1DUCG6e',
+    'pdf.worker.min.js': 'sha384-SnzOobpRMLXZ52iJvZm/C0fYw0OQemTXzTjIsdsfMcrCtCEe9qgzxTd3RSklO5x2',
+  };
 
   const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
 
@@ -47,10 +54,31 @@
     return out;
   }
 
-  // Strip the label text so digits inside it (e.g. "Tax 2026") don't count.
+  // Strip the label text so digits inside it (e.g. "Tax 2026") don't count,
+  // and stop at another field on the same line (hours, rate, units...).
   function afterLabel(line, re) {
     const m = line.match(re);
-    return m ? line.slice(m.index + m[0].length) : line;
+    let rest = m ? line.slice(m.index + m[0].length) : line;
+    const other = rest.search(/\b(hours?|hrs|rate|units?|days?|qty|quantity)\b/i);
+    if (other >= 0) rest = rest.slice(0, other);
+    return rest;
+  }
+
+  // Amounts on a payslip have cents; whole numbers like 2025 or 160 are usually
+  // a year, hours or a count. Use whole numbers only if nothing has cents.
+  function moneyIn(text) {
+    const withCents = [];
+    const whole = [];
+    let m;
+    MONEY.lastIndex = 0;
+    while ((m = MONEY.exec(text))) {
+      const after = text.slice(m.index + m[0].length, m.index + m[0].length + 2);
+      if (/^\s?%/.test(after)) continue;
+      const v = Number(m[1].replace(/,/g, ''));
+      if (/\.\d{1,2}$/.test(m[1])) withCents.push(v);
+      else if (!/^(19|20)\d\d$/.test(m[1])) whole.push(v);
+    }
+    return withCents.length ? withCents : whole;
   }
 
   function classify(line, rules, exclude) {
@@ -60,16 +88,26 @@
   }
 
   function parseDate(text) {
-    const labelled = text.match(/(pay(ment)?\s*date|date\s*(of\s*)?pa(id|yment)|period\s*end(ing)?|process(ed)?\s*date|pay\s*period)[^\d\n]{0,20}(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{2,4})/i);
-    const any = labelled ? null : text.match(/\b(\d{1,2})[/.\-](\d{1,2})[/.\-](20\d{2})\b/);
-    const m = labelled ? labelled.slice(-3) : any ? any.slice(1, 4) : null;
-    if (m) {
-      const day = Number(m[0]);
-      const month = Number(m[1]);
-      let year = Number(m[2]);
+    const D = '(\\d{1,2})[/.\\-](\\d{1,2})[/.\\-](\\d{2,4})';
+    const toDate = (d, mo, y) => {
+      const day = Number(d); const month = Number(mo); let year = Number(y);
       if (year < 100) year += 2000;
-      if (month >= 1 && month <= 12 && day >= 1 && day <= 31) return { year, month, day };
+      return month >= 1 && month <= 12 && day >= 1 && day <= 31 ? { year, month, day } : null;
+    };
+    // Most reliable first: the date you were paid, then the end of the pay
+    // period (the last date in "25/02/2025 - 24/03/2025"), then any date.
+    const tries = [
+      new RegExp(`(pay(ment)?\\s*date|date\\s*(of\\s*)?pa(id|yment)|process(ed)?\\s*date)[^\\d\\n]{0,20}${D}`, 'i'),
+      new RegExp(`(period\\s*end(ing)?|week\\s*end(ing)?|month\\s*end(ing)?)[^\\d\\n]{0,20}${D}`, 'i'),
+      new RegExp(`pay\\s*period[^\\n]*?${D}\\s*(-|–|to)\\s*${D}`, 'i'),
+      new RegExp(`pay\\s*period[^\\d\\n]{0,20}${D}`, 'i'),
+    ];
+    for (const re of tries) {
+      const m = text.match(re);
+      if (m) { const r = toDate(m[m.length - 3], m[m.length - 2], m[m.length - 1]); if (r) return r; }
     }
+    const any = text.match(/\b(\d{1,2})[/.\-](\d{1,2})[/.\-](20\d{2})\b/);
+    if (any) { const r = toDate(any[1], any[2], any[3]); if (r) return r; }
     const named = text.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(20\d{2})\b/i);
     if (named) return { year: Number(named[2]), month: MONTHS.indexOf(named[1].toLowerCase()) + 1, day: null };
     return null;
@@ -97,9 +135,19 @@
       KINDS.forEach(([kind, rules, exclude]) => {
         const rule = classify(line, rules, exclude);
         if (!rule) return;
-        let nums = numbersIn(afterLabel(line, rule.re));
+        const rest = afterLabel(line, rule.re);
+        // "... this period 612.00 Year to date 7,344.00": split at the YTD words.
+        const ytdAt = rest.search(YTD);
+        if (ytdAt >= 0) {
+          const before = moneyIn(rest.slice(0, ytdAt));
+          const after = moneyIn(rest.slice(ytdAt));
+          if (before.length) take(kind, 'period', before[0], rule.rank);
+          if (after.length) take(kind, 'ytd', after[0], rule.rank);
+          if (before.length || after.length) return;
+        }
+        let nums = moneyIn(rest);
         if (!nums.length && clean[i + 1] && !isLabel(clean[i + 1])) {
-          nums = numbersIn(clean[i + 1]);
+          nums = moneyIn(clean[i + 1]);
         }
         if (!nums.length) return;
         if (YTD.test(line)) {
@@ -176,6 +224,8 @@
   function loadScript(src) {
     return new Promise((resolve, reject) => {
       const s = document.createElement('script');
+      const file = src.split('/').pop();
+      if (PDFJS_SRI[file]) { s.integrity = PDFJS_SRI[file]; s.crossOrigin = 'anonymous'; }
       s.src = src;
       s.onload = resolve;
       s.onerror = () => reject(new Error('Could not load the PDF reader. Check your internet connection and try again.'));

@@ -17,7 +17,7 @@ const Tax = require('../../tax.js');
 
 const ROOT = path.join(__dirname, '..', '..');
 const FIX = path.join(__dirname, '..', 'fixtures');
-const CSP = "default-src 'none'; script-src 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src data: blob:; worker-src blob:; connect-src 'none'";
+const CSP = "default-src 'none'; script-src 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src data: blob:; worker-src blob:; connect-src 'none'";
 
 function findPdfJs() {
   const dirs = [process.env.PDFJS_DIR, path.join(ROOT, 'node_modules/pdfjs-dist/build')].filter(Boolean);
@@ -38,8 +38,9 @@ async function newPage(opts = {}) {
   // Fonts come from Google Fonts in the hosted page; serve them empty here.
   await ctx.route('https://fonts.googleapis.com/**', (r) => r.fulfill({ contentType: 'text/css', body: '' }));
   if (PDFJS) {
-    await ctx.route('https://cdnjs.cloudflare.com/**', (r) => r.fulfill({
+    await ctx.route('https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/**', (r) => r.fulfill({
       contentType: 'application/javascript',
+      headers: { 'access-control-allow-origin': '*' },
       body: fs.readFileSync(path.join(PDFJS, path.basename(new URL(r.request().url()).pathname))),
     }));
   }

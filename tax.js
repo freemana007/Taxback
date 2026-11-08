@@ -174,9 +174,13 @@
   /** Age on 31 December of the tax year, or null if dob unknown. */
   function ageAtYearEnd(dob, year) {
     if (!dob) return null;
+    // Read the year straight from "YYYY-MM-DD": Date parsing can shift it by
+    // a day (and a year on 1 January) depending on the time zone.
+    const m = /^(\d{4})-\d{2}-\d{2}/.exec(String(dob));
+    if (m) return year - Number(m[1]);
     const d = new Date(dob);
     if (Number.isNaN(d.getTime())) return null;
-    return year - d.getFullYear();
+    return year - d.getUTCFullYear();
   }
 
   /** Age-related percentage limit for pension relief. */
@@ -283,11 +287,14 @@
     let pension = 0;
     const pensionDetail = {};
     who.forEach((p) => {
-      const paid = sum(expensesFor(all, year, 'pension', p).map((e) => e.amount));
+      // Not married: every receipt is yours, even one marked as a spouse's earlier.
+      const paid = sum(expensesFor(all, year, 'pension', married ? p : null).map((e) => e.amount));
       const age = ageAtYearEnd(people[p] && people[p].dob, year);
       const limit = pensionLimit(age, gross[p]);
-      const allowed = Math.min(paid, limit);
-      pensionDetail[p] = { paid, limit: round2(limit), allowed: round2(allowed), age };
+      // Pension taken from wages already used part of the age-related limit.
+      const fromWages = Math.max(0, num(people[p] && people[p].pensionFromWages));
+      const allowed = Math.max(0, Math.min(paid, limit - fromWages));
+      pensionDetail[p] = { paid, limit: round2(limit), fromWages: round2(fromWages), allowed: round2(allowed), age };
       pension += allowed;
     });
     deductions.pension = skip('pension') ? 0 : pension;

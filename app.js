@@ -15,22 +15,14 @@
       widowedParent: 'Widowed Parent Credit', blind: 'Blind Person’s Credit', incapChild: 'Incapacitated Child Credit', depRelative: 'Dependent Relative Credit' });
 
   // ---------- State ----------
-  function defaultState() {
-    return {
-      profile: { status: 'single', youDob: '', spouseDob: '' },
-      years: {},
-      expenses: [],
-      checklist: {},
-      selectedYear: new Date().getFullYear() - 1, // the latest year you can claim a refund for
-      dismissed: {},
-    };
-  }
+  // Defaults open on the latest year you can claim a refund for.
+  function defaultState() { return TaxState.defaults(); }
 
   function load() {
     try {
       const raw = localStorage.getItem(STORE_KEY);
       if (!raw) return defaultState();
-      return Object.assign(defaultState(), JSON.parse(raw));
+      return TaxState.sanitize(JSON.parse(raw));
     } catch (e) {
       return defaultState();
     }
@@ -465,7 +457,11 @@
     const old = editingId ? state.expenses.find((x) => x.id === editingId) : null;
     if (pendingPhoto instanceof Blob) {
       item.photo = true;
-      photoPut(item.id, pendingPhoto).catch(() => toast('This browser wouldn’t store the photo. The receipt is saved without it.'));
+      photoPut(item.id, pendingPhoto).catch(() => {
+        const saved = state.expenses.find((x) => x.id === item.id);
+        if (saved) { saved.photo = false; save(); renderExpenses(); }
+        toast('This browser wouldn’t store the photo (it may be out of space). The receipt is saved without it.');
+      });
     } else if (pendingPhoto === 'remove') {
       photoDel(item.id);
     } else if (old && old.photo) {
@@ -559,6 +555,8 @@
             el('button', { class: 'link', text: 'Edit', onclick: () => startEdit(e) }),
             el('button', { class: 'link danger', text: 'Delete', onclick: (ev) => armConfirm(ev.currentTarget, 'Confirm delete', () => {
               state.expenses = state.expenses.filter((x) => x.id !== e.id);
+              state.deleted = state.deleted || {};
+              state.deleted[e.id] = Date.now();
               if (e.photo) photoDel(e.id);
               if (editingId === e.id) resetExpenseForm();
               save(); renderAll();
@@ -969,7 +967,11 @@
   function backupJson() { return JSON.stringify(state, null, 2); }
 
   function receiptsCsv() {
-    const esc = (v) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+    const esc = (v) => {
+      let s = String(v ?? '');
+      if (typeof v === 'string' && /^[=+\-@\t\r]/.test(s)) s = `'${s}`; // not a formula
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
     const head = ['year', 'date', 'category', 'person', 'amount', 'description', 'adults', 'children', 'partTime'];
     return [head.join(',')].concat(state.expenses
       .slice().sort((a, b) => (a.date || '').localeCompare(b.date || ''))
@@ -1043,7 +1045,7 @@
     let data;
     try { data = parseBackup(text); } catch (e) { setStatus('Could not restore: ' + e.message, true); return; }
     armConfirm(btn, 'Replace my data', () => {
-      state = Object.assign(defaultState(), data); tccKey = '';
+      state = TaxState.sanitize(data); tccKey = '';
       save(); resetExpenseForm(); renderAll();
       setStatus(`Restored ${state.expenses.length} receipts.`);
     });
@@ -1752,7 +1754,7 @@
 
   function renderReminders() {
     const ymd = (d) => `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
-    const iso = (d) => d.toISOString().slice(0, 10);
+    const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     $('#reminders').replaceChildren(...Guide.REMINDERS.map((r) => {
       const d = nextDate(r.month, r.day);
       const end = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
@@ -1831,10 +1833,13 @@
   async function photoOp(mode, fn) {
     const d = await photoDb();
     return new Promise((resolve, reject) => {
-      const tx = d.transaction('photos', mode);
+      let tx;
+      try { tx = d.transaction('photos', mode); } catch (e) { d.close(); reject(e); return; }
       const req = fn(tx.objectStore('photos'));
-      tx.oncomplete = () => resolve(req ? req.result : undefined);
-      tx.onerror = () => reject(tx.error);
+      tx.oncomplete = () => { d.close(); resolve(req ? req.result : undefined); };
+      // A full disk or quota aborts the transaction rather than erroring it.
+      tx.onerror = () => { d.close(); reject(tx.error); };
+      tx.onabort = () => { d.close(); reject(tx.error || new Error('Photo not saved')); };
     });
   }
   const photoPut = (id, blob) => photoOp('readwrite', (s) => s.put(blob, id));
@@ -1928,11 +1933,16 @@
     try {
       const snap = await sync.ref.get();
       clearTimeout(slow);
+      if (!sync.on) return; // turned off while connecting
       applyRemote(snap, true);
     } catch (e) {
-      clearTimeout(slow); sync.on = false; setSync('error'); return;
+      clearTimeout(slow);
+      if (!sync.on) return;
+      sync.on = false; setSync('error'); return;
     }
+    if (!sync.on) return;
     sync.unsub = sync.ref.onSnapshot((snap) => {
+      if (!sync.on) return;
       if (snap.metadata && snap.metadata.hasPendingWrites) return;
       applyRemote(snap, false);
     }, () => { sync.on = false; setSync('error'); });
@@ -1946,20 +1956,40 @@
 
   function hasData() { return state.expenses.length > 0 || Object.keys(state.years).length > 0; }
 
+  // Combine the synced copy with this device's copy, so neither side's work is
+  // lost: receipts are merged by id, deleted ones stay deleted, and for other
+  // figures the most recently saved copy wins.
   function applyRemote(snap, first) {
     const remote = snap && snap.exists ? snap.data() : null;
-    const remoteAt = remote ? Number(remote.updatedAt) || 0 : 0;
-    const localAt = Number(state.updatedAt) || 0;
-    if (remote && typeof remote.state === 'string' && remoteAt > localAt) {
+    let remoteState = null;
+    if (remote && typeof remote.state === 'string') {
       try {
-        state = Object.assign(defaultState(), JSON.parse(remote.state));
-        state.updatedAt = remoteAt;
-        tccKey = '';
-        persist();
-        resetExpenseForm(); renderAll();
-        toast(first ? 'Loaded your data from your other devices.' : 'Updated with changes from another device.');
-      } catch (e) { /* ignore a bad copy */ }
-    } else if (first && localAt > remoteAt && hasData()) {
+        remoteState = TaxState.sanitize(JSON.parse(remote.state));
+        remoteState.updatedAt = Number(remote.updatedAt) || remoteState.updatedAt;
+      } catch (e) { remoteState = null; }
+    }
+    if (!remoteState) {
+      if (first && hasData()) push();
+      if (sync.status !== 'saving') setSync('on');
+      return;
+    }
+    const hadData = hasData();
+    const merged = TaxState.merge(state, remoteState);
+    const localChanges = !TaxState.same(merged, state);
+    const remoteNeedsUpdate = !TaxState.same(merged, remoteState);
+    if (localChanges) {
+      state = merged;
+      tccKey = '';
+      persist();
+      // Keep a receipt you're halfway through; only reset if it was deleted elsewhere.
+      if (editingId && !state.expenses.some((e) => e.id === editingId)) resetExpenseForm();
+      renderAll();
+      toast(!first ? 'Updated with changes from another device.'
+        : hadData ? 'Combined this device’s data with your other devices.' : 'Loaded your data from your other devices.');
+    }
+    if (remoteNeedsUpdate) {
+      state.updatedAt = Date.now();
+      persist();
       push();
     }
     if (sync.status !== 'saving') setSync('on');

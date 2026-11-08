@@ -9,7 +9,7 @@ const { chromium } = require('playwright');
 
 const ROOT = path.join(__dirname, '..', '..');
 const FIX = path.join(__dirname, '..', 'fixtures');
-const CSP = "default-src 'none'; script-src 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src data: blob:; worker-src blob:; connect-src 'none'";
+const CSP = "default-src 'none'; script-src 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src data: blob:; worker-src blob:; connect-src 'none'";
 const PDFJS = [process.env.PDFJS_DIR, path.join(ROOT, 'node_modules/pdfjs-dist/build')].filter(Boolean)
   .find((d) => fs.existsSync(path.join(d, 'pdf.min.js'))) || null;
 
@@ -32,7 +32,7 @@ after(async () => { if (browser) await browser.close(); if (server) server.close
 async function newPage({ state, init, context } = {}) {
   const ctx = await browser.newContext(Object.assign({ viewport: { width: 1200, height: 900 } }, context));
   await ctx.route('https://fonts.googleapis.com/**', (r) => r.fulfill({ contentType: 'text/css', body: '' }));
-  if (PDFJS) await ctx.route('https://cdnjs.cloudflare.com/**', (r) => r.fulfill({ contentType: 'application/javascript', body: fs.readFileSync(path.join(PDFJS, path.basename(new URL(r.request().url()).pathname))) }));
+  if (PDFJS) await ctx.route('https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/**', (r) => r.fulfill({ contentType: 'application/javascript', headers: { 'access-control-allow-origin': '*' }, body: fs.readFileSync(path.join(PDFJS, path.basename(new URL(r.request().url()).pathname))) }));
   await ctx.addInitScript(() => { window.confirm = () => false; window.alert = () => {}; });
   if (state) await ctx.addInitScript((s) => { if (!sessionStorage.getItem('seeded')) { localStorage.setItem('taxback.v1', JSON.stringify(s)); sessionStorage.setItem('seeded', '1'); } }, state);
   if (init) await ctx.addInitScript(init);
@@ -217,8 +217,10 @@ describe('sync across devices', () => {
     const written = await p.evaluate(() => JSON.parse(window.__writes[window.__writes.length - 1].state));
     assert.equal(written.expenses.length, 2);
     // a change from another device arrives live
-    await p.evaluate((s) => window.__push({ state: JSON.stringify(Object.assign(JSON.parse(s), { expenses: [] })), updatedAt: Date.now() + 120000 }), JSON.stringify(remoteState));
-    await p.waitForFunction(() => JSON.parse(localStorage.getItem('taxback.v1')).expenses.length === 0);
+    // another device deletes the first receipt: it goes here too, and the new one stays
+    await p.evaluate((s) => window.__push({ state: JSON.stringify(Object.assign(JSON.parse(s), { expenses: [], deleted: { x: Date.now() } })), updatedAt: Date.now() + 120000 }), JSON.stringify(remoteState));
+    await p.waitForFunction(() => JSON.parse(localStorage.getItem('taxback.v1')).expenses.length === 1);
+    assert.equal((await stored(p)).expenses[0].amount, 80);
     // turning sync off stops writes
     await p.click('[data-tab=data]');
     await p.uncheck('#syncToggle');
@@ -303,6 +305,68 @@ describe('appearance', () => {
     await p.click('#modePick [data-mode=system]');
     await p.evaluate(() => document.documentElement.setAttribute('data-theme', 'light'));
     assert.equal(await p.getAttribute('html', 'data-theme'), 'light', 'on System it follows the page');
+    await p.context().close();
+  });
+});
+
+describe('fixes from the PR review', () => {
+  it('combines this device’s receipts with the synced copy instead of overwriting it', async () => {
+    const cloud = { profile: { status: 'single', youDob: '1980-01-01' }, selectedYear: 2025, checklist: {}, updatedAt: 1000,
+      years: { 2025: { youGross: 50000 } }, expenses: [{ id: 'c1', year: 2025, date: '2025-02-02', category: 'health', amount: 300, person: 'you' }] };
+    const init = `(${(remote) => {
+      window.__writes = [];
+      let doc = remote;
+      const ref = { get: async () => ({ exists: true, data: () => doc, metadata: {} }), set: async (d) => { doc = d; window.__writes.push(d); }, onSnapshot: () => () => {} };
+      window.claude = { use: async (n) => (n === 'db' ? { doc: () => ref } : n === 'user' ? { id: async () => 'u1' } : null) };
+    }})(${JSON.stringify({ state: JSON.stringify(cloud), updatedAt: 1000 })})`;
+    // this device already has a newer, different receipt
+    const p = await newPage({ init, state: base({ updatedAt: Date.now(), expenses: [{ id: 'd1', year: 2025, date: '2025-05-05', category: 'rent', amount: 900, person: 'you' }] }) });
+    await p.waitForFunction(() => window.__writes.length > 0, null, { timeout: 5000 });
+    const pushed = await p.evaluate(() => JSON.parse(window.__writes[window.__writes.length - 1].state));
+    assert.deepEqual(pushed.expenses.map((e) => e.id).sort(), ['c1', 'd1']);
+    assert.deepEqual((await stored(p)).expenses.map((e) => e.id).sort(), ['c1', 'd1']);
+    assert.match(await text(p, '#toast'), /Combined this device’s data/);
+    assert.deepEqual(p.errors, []);
+    await p.context().close();
+  });
+
+  it('a broken backup is cleaned up instead of breaking the app', async () => {
+    const p = await newPage({ state: base() });
+    await p.click('[data-tab=data]');
+    await p.fill('#dataBox', JSON.stringify({ years: null, profile: 'x', expenses: [null, { id: 'ok', year: 2025, category: 'health', amount: 50 }] }));
+    await p.click('#restoreBtn');
+    await p.click('#restoreBtn');
+    await p.reload();
+    const s = await stored(p);
+    assert.deepEqual(s.expenses.map((e) => e.id), ['ok']);
+    assert.deepEqual(s.years, {});
+    assert.deepEqual(p.errors, []);
+    await p.context().close();
+  });
+
+  it('CSV export stops spreadsheet formulas', async () => {
+    const p = await newPage({ state: base({ expenses: [{ id: 'f', year: 2025, date: '2025-01-01', category: 'health', amount: 5, person: 'you', description: '=HYPERLINK("x")' }] }) });
+    await p.click('[data-tab=data]');
+    await p.click('#exportCsvBtn');
+    assert.match(await p.inputValue('#dataBox'), /"'=HYPERLINK\(""x""\)"/);
+    await p.context().close();
+  });
+});
+
+describe('PDF library integrity', () => {
+  it('refuses a changed copy of pdf.js', { skip: !PDFJS && 'pdf.js not installed locally' }, async () => {
+    const p = await newPage({ state: base() });
+    // a tampered file: the browser's integrity check must block it
+    await p.context().route('https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/**', (r) => r.fulfill({
+      contentType: 'application/javascript', headers: { 'access-control-allow-origin': '*' },
+      body: fs.readFileSync(path.join(PDFJS, path.basename(new URL(r.request().url()).pathname)), 'utf8') + '\n;window.__tampered = true;',
+    }));
+    await p.click('[data-tab=profile]');
+    await p.click('#modeMonth');
+    p.errors.length = 0;
+    await p.setInputFiles('#payslipFile', path.join(FIX, 'payslip.pdf'));
+    await p.waitForFunction(() => /Could not load the PDF reader/.test(document.querySelector('#payslipResult').textContent), null, { timeout: 15000 });
+    assert.equal(await p.evaluate(() => window.__tampered === true), false);
     await p.context().close();
   });
 });

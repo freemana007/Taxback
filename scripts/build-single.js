@@ -8,7 +8,7 @@ const read = (f) => fs.readFileSync(path.join(root, f), 'utf8');
 
 const html = read('index.html');
 const css = read('styles.css');
-const js = ['tax.js', 'guide.js', 'payslip.js', 'app.js'].map(read);
+const js = ['tax.js', 'state.js', 'guide.js', 'payslip.js', 'app.js'].map(read);
 js.concat(css).forEach((src) => {
   if (/<\/(script|style)/i.test(src)) throw new Error('Source contains a closing script/style tag');
 });
@@ -30,6 +30,7 @@ const out = [
   `<script>\n${js[1]}</script>`,
   `<script>\n${js[2]}</script>`,
   `<script>\n${js[3]}</script>`,
+  `<script>\n${js[4]}</script>`,
   '',
 ].join('\n');
 
